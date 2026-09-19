@@ -9,13 +9,27 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from loguru import logger
-from pynput.mouse import Button, Controller
 
 try:
     from Quartz import (
+        CGAssociateMouseAndMouseCursorPosition,
+        CGEventCreate,
+        CGEventCreateMouseEvent,
+        CGEventGetLocation,
+        CGEventPost,
         CGEventSourceButtonState,
+        CGEventSourceCreate,
         CGEventSourceKeyState,
+        CGEventSourceSetLocalEventsSuppressionInterval,
+        CGPoint,
+        CGWarpMouseCursorPosition,
+        kCGEventLeftMouseDown,
+        kCGEventLeftMouseUp,
+        kCGEventMouseMoved,
+        kCGEventSourceStateCombinedSessionState,
         kCGEventSourceStateHIDSystemState,
+        kCGHIDEventTap,
+        kCGMouseButtonLeft,
     )
 except ImportError as exc:  # pragma: no cover
     raise RuntimeError(
@@ -34,7 +48,10 @@ _MOUSE_LEFT = 0
 _MOUSE_RIGHT = 1
 _MOUSE_MIDDLE = 2
 
-_mouse = Controller()
+# Иначе macOS после каждого warp молчит ~0.25с — курсор ползёт рывками.
+_EVENT_SOURCE = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState)
+if _EVENT_SOURCE is not None:
+    CGEventSourceSetLocalEventsSuppressionInterval(_EVENT_SOURCE, 0.0)
 
 
 def random_sleep(
@@ -61,12 +78,45 @@ def _button_down(button: int) -> bool:
 
 
 def _position() -> tuple[int, int]:
-    x, y = _mouse.position
-    return int(x), int(y)
+    loc = CGEventGetLocation(CGEventCreate(None))
+    return int(loc.x), int(loc.y)
 
 
 def _move_to(x: int, y: int) -> None:
-    _mouse.position = (int(x), int(y))
+    point = CGPoint(float(int(x)), float(int(y)))
+    if _EVENT_SOURCE is not None:
+        CGEventSourceSetLocalEventsSuppressionInterval(_EVENT_SOURCE, 0.0)
+    CGWarpMouseCursorPosition(point)
+    CGAssociateMouseAndMouseCursorPosition(True)
+    event = CGEventCreateMouseEvent(
+        _EVENT_SOURCE,
+        kCGEventMouseMoved,
+        point,
+        kCGMouseButtonLeft,
+    )
+    CGEventPost(kCGHIDEventTap, event)
+
+
+def _left_down() -> None:
+    point = CGPoint(*_position())
+    event = CGEventCreateMouseEvent(
+        _EVENT_SOURCE,
+        kCGEventLeftMouseDown,
+        point,
+        kCGMouseButtonLeft,
+    )
+    CGEventPost(kCGHIDEventTap, event)
+
+
+def _left_up() -> None:
+    point = CGPoint(*_position())
+    event = CGEventCreateMouseEvent(
+        _EVENT_SOURCE,
+        kCGEventLeftMouseUp,
+        point,
+        kCGMouseButtonLeft,
+    )
+    CGEventPost(kCGHIDEventTap, event)
 
 
 @dataclass(slots=True)
@@ -278,13 +328,13 @@ class HumanInput:
         total_duration = (
             random.uniform(0.375, 0.675) + min(distance / 2000.0, 0.4)
         ) / 1.3
-        step_duration = total_duration / steps
         logger.debug(
             "Наведение курсора: расстояние {:.0f}px, длительность ~{:.2f} сек",
             distance,
             total_duration,
         )
 
+        started_at = time.perf_counter()
         for index in range(1, steps + 1):
             if self.restart_requested.is_set():
                 return
@@ -309,7 +359,10 @@ class HumanInput:
                 int(px + random.randint(-jitter, jitter)),
                 int(py + random.randint(-jitter, jitter)),
             )
-            random_sleep(step_duration * 0.78, step_duration * 1.22)
+            due = started_at + total_duration * (index / steps)
+            remaining = due - time.perf_counter()
+            if remaining > 0.0008:
+                time.sleep(remaining)
 
     def click_human(
         self,
@@ -364,11 +417,11 @@ class HumanInput:
                 min(hold_min, hold_max),
                 max(hold_min, hold_max),
             )
-            _mouse.press(Button.left)
+            _left_down()
             try:
                 random_sleep(hold_duration, hold_duration, "удержание кнопки мыши")
             finally:
-                _mouse.release(Button.left)
+                _left_up()
                 self.last_click_at = time.monotonic()
             self.action_count += 1
             logger.info(
@@ -404,11 +457,11 @@ class HumanInput:
                 return _position()
             actual_x, actual_y = _position()
             hold_duration = random.uniform(0.07, 0.16)
-            _mouse.press(Button.left)
+            _left_down()
             try:
                 random_sleep(hold_duration, hold_duration, "удержание кнопки мыши")
             finally:
-                _mouse.release(Button.left)
+                _left_up()
                 self.last_click_at = time.monotonic()
             self.action_count += 1
             logger.info(
