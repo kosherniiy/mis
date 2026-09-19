@@ -9,6 +9,8 @@ import mss
 import numpy as np
 from loguru import logger
 
+from layout import FrameLayout
+
 try:
     import Quartz
     from AppKit import (
@@ -242,17 +244,26 @@ class GameWindowCapture:
         window_owner: str = "",
         reference_width: int = 1920,
         reference_height: int = 1080,
+        layout_fit: str = "fill",
     ) -> None:
         self.window_title = window_title
         self.titlebar_height = max(0, int(titlebar_height))
         self.window_owner = window_owner
         self.reference_width = max(1, int(reference_width))
         self.reference_height = max(1, int(reference_height))
+        self.layout_fit = str(layout_fit or "fill")
         self._sct = mss.mss()
         self.last_region: CaptureRegion | None = None
         self.last_capture_at = 0.0
         self._last_owner = ""
         self._logged_size = False
+        self.layout = FrameLayout.from_frame(
+            self.reference_width,
+            self.reference_height,
+            self.reference_width,
+            self.reference_height,
+            self.layout_fit,
+        )
 
     def _find_window(self) -> object:
         best: object | None = None
@@ -354,27 +365,24 @@ class GameWindowCapture:
                 )
             )
             frame = cv2.cvtColor(raw, cv2.COLOR_BGRA2BGR)
-            if (
-                frame.shape[1] != self.reference_width
-                or frame.shape[0] != self.reference_height
-            ):
-                interpolation = (
-                    cv2.INTER_AREA
-                    if (
-                        frame.shape[1] > self.reference_width
-                        or frame.shape[0] > self.reference_height
-                    )
-                    else cv2.INTER_LINEAR
-                )
-                frame = cv2.resize(
-                    frame,
-                    (self.reference_width, self.reference_height),
-                    interpolation=interpolation,
-                )
+            self.last_region = region
+            self.last_capture_at = time()
+            self.layout = FrameLayout.build(
+                frame.shape[1],
+                frame.shape[0],
+                region.left,
+                region.top,
+                region.width,
+                region.height,
+                ref_w=self.reference_width,
+                ref_h=self.reference_height,
+                fit=self.layout_fit,
+            )
             if not self._logged_size:
                 self._logged_size = True
                 logger.info(
-                    "Захват окна: логический {}x{} @ ({}, {}), сырой {}x{}, эталон {}x{}",
+                    "Захват окна: логический {}x{} @ ({}, {}), сырой {}x{}, "
+                    "эталон {}x{}, fit={}, масштаб {:.3f}x{:.3f}",
                     region.width,
                     region.height,
                     region.left,
@@ -383,37 +391,34 @@ class GameWindowCapture:
                     raw.shape[0],
                     self.reference_width,
                     self.reference_height,
+                    self.layout.fit,
+                    self.layout.scale_x,
+                    self.layout.scale_y,
                 )
-            self.last_region = region
-            self.last_capture_at = time()
             return frame
         except Exception:
             logger.exception("Ошибка захвата окна игры")
             raise
 
     def to_screen(self, x: int, y: int) -> tuple[int, int]:
-        """Переводит координаты эталонного снимка в экранные точки macOS."""
-        if self.last_region is None:
-            raise RuntimeError("До преобразования координат необходимо сделать снимок")
-        scale_x = self.last_region.width / self.reference_width
-        scale_y = self.last_region.height / self.reference_height
-        return (
-            int(round(self.last_region.left + x * scale_x)),
-            int(round(self.last_region.top + y * scale_y)),
-        )
+        """Переводит координаты снимка в экранные точки macOS."""
+        return self.layout.frame_to_screen(x, y)
 
     def from_screen(self, x: int, y: int) -> tuple[int, int]:
-        """Переводит экранные точки в координаты эталонного снимка."""
-        if self.last_region is None:
-            region = self.get_region()
-        else:
-            region = self.last_region
-        scale_x = self.reference_width / region.width
-        scale_y = self.reference_height / region.height
-        return (
-            int(round((x - region.left) * scale_x)),
-            int(round((y - region.top) * scale_y)),
-        )
+        """Переводит экранные точки в координаты снимка."""
+        return self.layout.screen_to_frame(x, y)
+
+    def map_ref(self, x: int, y: int) -> tuple[int, int]:
+        return self.layout.ref_to_frame(x, y)
+
+    def map_ref_rect(
+        self,
+        left: int,
+        top: int,
+        right: int,
+        bottom: int,
+    ) -> tuple[int, int, int, int]:
+        return self.layout.ref_to_frame_rect(left, top, right, bottom)
 
     def contains_point(self, x: int, y: int) -> bool:
         try:

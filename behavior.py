@@ -48,11 +48,16 @@ class MiscritsBehavior:
             str(config.get("window_title", "Miscrits")),
             **self._capture_kwargs(config),
         )
+        ref = config.get("reference_resolution")
+        ref = ref if isinstance(ref, dict) else {}
         self.vision = Vision(
             config.get("templates_dir", "./templates"),
             float(config.get("confidence_threshold", 0.85)),
             bool(config.get("debug", False)),
             "./debug",
+            reference_width=int(ref.get("width", 1920)),
+            reference_height=int(ref.get("height", 1080)),
+            layout_fit=str(ref.get("fit", "fill")),
         )
         delays = config.get("action_delays", {})
         manual_pause = config.get("manual_mouse_pause", {})
@@ -84,17 +89,19 @@ class MiscritsBehavior:
 
     @staticmethod
     def _capture_kwargs(config: dict[str, Any]) -> dict[str, Any]:
-        if sys.platform != "darwin":
-            return {}
-        macos = config.get("macos") if isinstance(config.get("macos"), dict) else {}
         ref = config.get("reference_resolution")
         ref = ref if isinstance(ref, dict) else {}
-        return {
-            "titlebar_height": int(macos.get("titlebar_height", 0)),
-            "window_owner": str(macos.get("window_owner", "")),
+        kwargs: dict[str, Any] = {
             "reference_width": int(ref.get("width", 1920)),
             "reference_height": int(ref.get("height", 1080)),
+            "layout_fit": str(ref.get("fit", "fill")),
         }
+        if sys.platform != "darwin":
+            return kwargs
+        macos = config.get("macos") if isinstance(config.get("macos"), dict) else {}
+        kwargs["titlebar_height"] = int(macos.get("titlebar_height", 0))
+        kwargs["window_owner"] = str(macos.get("window_owner", ""))
+        return kwargs
 
     @staticmethod
     def _restore_coordinates(value: object) -> tuple[int, int] | None:
@@ -116,6 +123,24 @@ class MiscritsBehavior:
             f" ({reason})" if reason else "",
         )
         self.state = new_state
+
+    def _ref_xy(self, x: int, y: int) -> tuple[int, int]:
+        mapper = getattr(self.capture, "map_ref", None)
+        if callable(mapper):
+            return mapper(x, y)
+        return x, y
+
+    def _ref_rect(
+        self,
+        left: int,
+        top: int,
+        right: int,
+        bottom: int,
+    ) -> tuple[int, int, int, int]:
+        mapper = getattr(self.capture, "map_ref_rect", None)
+        if callable(mapper):
+            return mapper(left, top, right, bottom)
+        return left, top, right, bottom
 
     def run(self) -> None:
         logger.info("Запуск state machine Miscrits")
@@ -193,8 +218,12 @@ class MiscritsBehavior:
                 return None
             self.input.wait_if_paused()
             self.last_frame = self.capture.capture()
+            binder = getattr(self.vision, "use_layout", None)
+            if callable(binder):
+                binder(getattr(self.capture, "layout", None))
             return self.last_frame
         except Exception:
+            logger.exception("Ошибка захвата экрана")
             self.transition(BotState.ERROR_PAUSE, "ошибка захвата экрана")
             return None
 
@@ -231,7 +260,7 @@ class MiscritsBehavior:
         )
         if self.template_misses >= maximum:
             if self.last_frame is not None:
-                self.vision.save_debug(self.last_frame, "error")
+                self.vision.save_debug(self.last_frame, "error", force=True)
             self.transition(BotState.ERROR_PAUSE, f"пропуски определения: {label}")
 
     def _click_match(self, match: TemplateMatch) -> tuple[int, int]:
@@ -261,10 +290,12 @@ class MiscritsBehavior:
         """Кликает в случайную безопасную точку области из конфига."""
         try:
             area = area_override if area_override is not None else self.config[config_key]
-            left = int(area["left"])
-            top = int(area["top"])
-            right = int(area["right"])
-            bottom = int(area["bottom"])
+            left, top, right, bottom = self._ref_rect(
+                int(area["left"]),
+                int(area["top"]),
+                int(area["right"]),
+                int(area["bottom"]),
+            )
             margin = max(0, int(area.get("margin", 8)))
         except (KeyError, TypeError, ValueError):
             logger.exception("Некорректный {} в config.yaml", config_key)
@@ -384,7 +415,7 @@ class MiscritsBehavior:
             result: list[tuple[int, int, int]] = []
 
             for index, marker in enumerate(marker_pixels, start=1):
-                x, y = int(marker["x"]), int(marker["y"])
+                x, y = self._ref_xy(int(marker["x"]), int(marker["y"]))
                 if not (0 <= x < frame.shape[1] and 0 <= y < frame.shape[0]):
                     raise ValueError(f"маркер #{index} ({x}, {y}) вне снимка")
                 pixel_blue, pixel_green, pixel_red = (
@@ -430,8 +461,7 @@ class MiscritsBehavior:
         """Проверяет точный цвет пикселя, сигнализирующего о конце боя."""
         try:
             pixel = self.config["battle_result_pixel"]
-            x = int(pixel["x"])
-            y = int(pixel["y"])
+            x, y = self._ref_xy(int(pixel["x"]), int(pixel["y"]))
             normalized = str(pixel["color"]).strip().lstrip("#")
             tolerance = float(pixel.get("tolerance", 0))
             if len(normalized) != 6:
@@ -487,8 +517,7 @@ class MiscritsBehavior:
         """Определяет необходимость лечения по цвету заданного пикселя."""
         try:
             pixel = self.config["heal_check_pixel"]
-            x = int(pixel["x"])
-            y = int(pixel["y"])
+            x, y = self._ref_xy(int(pixel["x"]), int(pixel["y"]))
             normalized = str(pixel["color"]).strip().lstrip("#")
             tolerance = float(pixel.get("tolerance", 20))
             if len(normalized) != 6:
@@ -555,8 +584,10 @@ class MiscritsBehavior:
                 misses_before_click,
             )
             if self.map_object_misses >= misses_before_click:
-                local_x = int(close_config.get("x", 942))
-                local_y = int(close_config.get("y", 665))
+                local_x, local_y = self._ref_xy(
+                    int(close_config.get("x", 942)),
+                    int(close_config.get("y", 665)),
+                )
                 screen_x, screen_y = self.capture.to_screen(local_x, local_y)
                 actual_x, actual_y = self.input.click_human(screen_x, screen_y)
                 self.last_coordinates = (actual_x, actual_y)
@@ -641,8 +672,7 @@ class MiscritsBehavior:
     def _detect_rarity(self, frame: np.ndarray) -> str | None:
         try:
             pixel_config = self.config.get("rarity_pixel", {})
-            x = int(pixel_config["x"])
-            y = int(pixel_config["y"])
+            x, y = self._ref_xy(int(pixel_config["x"]), int(pixel_config["y"]))
             colors = pixel_config.get("colors", {})
             tolerance = float(pixel_config.get("tolerance", 24))
             if not (0 <= x < frame.shape[1] and 0 <= y < frame.shape[0]):
@@ -653,6 +683,7 @@ class MiscritsBehavior:
                     frame.shape[1],
                     frame.shape[0],
                 )
+                self.vision.save_debug(frame, "rarity_pixel_oob", force=True)
                 return None
 
             blue, green, red = (int(value) for value in frame[y, x])
@@ -688,6 +719,7 @@ class MiscritsBehavior:
                 y,
                 f"{rarity} {actual_hex} d={distance:.1f}",
                 hit=matched,
+                force=not matched,
             )
             if matched:
                 self.template_misses = 0
@@ -718,10 +750,12 @@ class MiscritsBehavior:
         """Читает процент вероятности поимки из фиксированной области."""
         try:
             area = self.config["capture_chance_area"]
-            left = int(area["left"])
-            top = int(area["top"])
-            right = int(area["right"])
-            bottom = int(area["bottom"])
+            left, top, right, bottom = self._ref_rect(
+                int(area["left"]),
+                int(area["top"]),
+                int(area["right"]),
+                int(area["bottom"]),
+            )
             if not (
                 0 <= left < right <= frame.shape[1]
                 and 0 <= top < bottom <= frame.shape[0]
@@ -778,6 +812,7 @@ class MiscritsBehavior:
                     else f"ocr={recognized}"
                 ),
                 hit=chance_found is not None,
+                force=chance_found is None,
             )
             if chance_found is not None:
                 return chance_found
@@ -805,13 +840,19 @@ class MiscritsBehavior:
         hp = read_enemy_hp(frame, self.config)
         try:
             area = self.config.get("enemy_hp_area", {})
-            self.vision.save_debug_rect(
-                frame,
-                "enemy_hp",
+            left, top, right, bottom = self._ref_rect(
                 int(area["left"]),
                 int(area["top"]),
                 int(area["right"]),
                 int(area["bottom"]),
+            )
+            self.vision.save_debug_rect(
+                frame,
+                "enemy_hp",
+                left,
+                top,
+                right,
+                bottom,
                 label="" if hp is None else f"{hp[0]}/{hp[1]}",
                 hit=hp is not None,
             )
@@ -833,8 +874,7 @@ class MiscritsBehavior:
         """Анимация пикселя кнопки «Поймать» означает, что мискрита ещё нет в коллекции."""
         try:
             check = self.config.get("catch_button_new_check", {})
-            x = int(check.get("x", 879))
-            y = int(check.get("y", 168))
+            x, y = self._ref_xy(int(check.get("x", 879)), int(check.get("y", 168)))
             duration = float(check.get("duration", 1.0))
             interval = float(check.get("interval", 0.2))
             if interval <= 0:
@@ -893,10 +933,12 @@ class MiscritsBehavior:
         """Проверяет наличие надписи «Ваш ход!» в заданной области."""
         try:
             area = self.config["turn_prompt_area"]
-            left = int(area["left"])
-            top = int(area["top"])
-            right = int(area["right"])
-            bottom = int(area["bottom"])
+            left, top, right, bottom = self._ref_rect(
+                int(area["left"]),
+                int(area["top"]),
+                int(area["right"]),
+                int(area["bottom"]),
+            )
             if not (
                 0 <= left < right <= frame.shape[1]
                 and 0 <= top < bottom <= frame.shape[0]
@@ -1731,8 +1773,7 @@ class MiscritsBehavior:
             )
             try:
                 point = self.config["evolve_click"]
-                local_x = int(point["x"])
-                local_y = int(point["y"])
+                local_x, local_y = self._ref_xy(int(point["x"]), int(point["y"]))
                 if not (
                     0 <= local_x < frame.shape[1]
                     and 0 <= local_y < frame.shape[0]

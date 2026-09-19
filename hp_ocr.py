@@ -12,6 +12,7 @@ import numpy as np
 import pytesseract
 from loguru import logger
 
+from layout import FrameLayout
 from tesseract_bin import resolve_tesseract_cmd
 
 OCR_CONFIG = "--psm 7 --oem 3 -c tessedit_char_whitelist=0123456789/"
@@ -368,6 +369,16 @@ def read_enemy_hp(
         top = int(area["top"])
         right = int(area["right"])
         bottom = int(area["bottom"])
+        ref = config.get("reference_resolution")
+        ref = ref if isinstance(ref, dict) else {}
+        layout = FrameLayout.from_frame(
+            frame.shape[1],
+            frame.shape[0],
+            int(ref.get("width", 1920)),
+            int(ref.get("height", 1080)),
+            str(ref.get("fit", "fill")),
+        )
+        left, top, right, bottom = layout.ref_to_frame_rect(left, top, right, bottom)
         if not (
             0 <= left < right <= frame.shape[1]
             and 0 <= top < bottom <= frame.shape[0]

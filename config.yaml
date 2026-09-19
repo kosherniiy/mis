@@ -6,10 +6,15 @@ macos:
   # обычно совпадает с приложением, например "Miscrits" или "Google Chrome".
   window_owner: ""
 # Эталон, под который нарезаны templates и координаты в этом файле.
-# Снимок другого размера (например 1440x900 на Mac) масштабируется сюда.
+# Снимок другого размера масштабируется к этим точкам (окно, fullscreen, Retina).
 reference_resolution:
   width: 1920
   height: 1080
+  # fill — растянуть оси независимо (другой размер по ширине и высоте).
+  # contain — сохранить пропорции эталона и добавить поля.
+  # cover — заполнить окно, обрезав края; так Miscrits ведёт себя в fullscreen.
+  # identity — 1:1; на Windows maximized выбирается само (клиент короче из-за рамки).
+  fit: fill
 start_phase: "search"
 templates_dir: "./templates"
 confidence_threshold: 0.85

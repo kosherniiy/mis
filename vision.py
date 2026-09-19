@@ -9,6 +9,8 @@ import cv2
 import numpy as np
 from loguru import logger
 
+from layout import FrameLayout
+
 
 _TEMPLATE_CACHE: dict[Path, np.ndarray] = {}
 _CACHE_LOCK = RLock()
@@ -44,23 +46,22 @@ def load_template(template_path: str | Path) -> np.ndarray | None:
         return template
 
 
-def find_template(
+def match_template_image(
     image: np.ndarray,
-    template_path: str | Path,
+    template: np.ndarray,
     threshold: float = 0.85,
 ) -> tuple[int, int, float] | None:
     """Возвращает левый верхний угол лучшего совпадения и confidence."""
-    template = load_template(template_path)
-    if template is None:
-        return None
-    if image.shape[0] < template.shape[0] or image.shape[1] < template.shape[1]:
-        logger.error("Шаблон {} больше захваченного изображения", template_path)
+    if (
+        image.shape[0] < template.shape[0]
+        or image.shape[1] < template.shape[1]
+    ):
         return None
     result = cv2.matchTemplate(image, template, cv2.TM_CCOEFF_NORMED)
     _, confidence, _, location = cv2.minMaxLoc(result)
     if confidence < threshold:
         return None
-    return location[0], location[1], float(confidence)
+    return int(location[0]), int(location[1]), float(confidence)
 
 
 def find_all_templates(
@@ -100,13 +101,51 @@ class Vision:
         threshold: float = 0.85,
         debug: bool = False,
         debug_dir: str | Path = "./debug",
+        reference_width: int = 1920,
+        reference_height: int = 1080,
+        layout_fit: str = "fill",
     ) -> None:
         self.templates_dir = Path(templates_dir)
         self.threshold = threshold
         self.debug = debug
         self.debug_dir = Path(debug_dir)
+        self.reference_width = max(1, int(reference_width))
+        self.reference_height = max(1, int(reference_height))
+        self.layout_fit = str(layout_fit or "fill")
+        self._layout_override: FrameLayout | None = None
         if debug:
             self.debug_dir.mkdir(parents=True, exist_ok=True)
+
+    def use_layout(self, layout: FrameLayout | None) -> None:
+        self._layout_override = layout
+
+    def _layout_for(self, image: np.ndarray) -> FrameLayout:
+        override = self._layout_override
+        if (
+            override is not None
+            and override.frame_w == image.shape[1]
+            and override.frame_h == image.shape[0]
+        ):
+            return override
+        return FrameLayout.from_frame(
+            image.shape[1],
+            image.shape[0],
+            self.reference_width,
+            self.reference_height,
+            self.layout_fit,
+        )
+
+    def _scale_template(self, template: np.ndarray, image: np.ndarray) -> np.ndarray:
+        layout = self._layout_for(image)
+        width, height = layout.ref_to_frame_size(template.shape[1], template.shape[0])
+        if width == template.shape[1] and height == template.shape[0]:
+            return template
+        interpolation = (
+            cv2.INTER_AREA
+            if width < template.shape[1] or height < template.shape[0]
+            else cv2.INTER_LINEAR
+        )
+        return cv2.resize(template, (width, height), interpolation=interpolation)
 
     def template_path(self, name: str) -> Path:
         return self.templates_dir / name
@@ -134,11 +173,12 @@ class Vision:
             template = load_template(path)
             if template is None:
                 return None
-            found = find_template(image, path, threshold or self.threshold)
+            scaled = self._scale_template(template, image)
+            found = match_template_image(image, scaled, threshold or self.threshold)
             if found is None:
                 return None
             x, y, confidence = found
-            match = TemplateMatch(x, y, template.shape[1], template.shape[0], confidence)
+            match = TemplateMatch(x, y, scaled.shape[1], scaled.shape[0], confidence)
             logger.debug(
                 "Шаблон {} найден: x={}, y={}, confidence={:.3f}",
                 name,
@@ -153,14 +193,56 @@ class Vision:
             logger.exception("Ошибка поиска шаблона {}", name)
             return None
 
+    @staticmethod
+    def _overlay_pixel_zoom(
+        output: np.ndarray,
+        image: np.ndarray,
+        x: int,
+        y: int,
+        color: tuple[int, int, int],
+        radius: int = 16,
+        zoom: int = 8,
+    ) -> None:
+        height, width = image.shape[:2]
+        x0, x1 = max(0, x - radius), min(width, x + radius + 1)
+        y0, y1 = max(0, y - radius), min(height, y + radius + 1)
+        crop = image[y0:y1, x0:x1]
+        if crop.size == 0:
+            return
+        magnified = cv2.resize(
+            crop,
+            (crop.shape[1] * zoom, crop.shape[0] * zoom),
+            interpolation=cv2.INTER_NEAREST,
+        )
+        local_x = (x - x0) * zoom + zoom // 2
+        local_y = (y - y0) * zoom + zoom // 2
+        cv2.circle(magnified, (local_x, local_y), max(3, zoom // 2), color, 1, cv2.LINE_AA)
+        magnified = cv2.copyMakeBorder(
+            magnified,
+            2,
+            2,
+            2,
+            2,
+            cv2.BORDER_CONSTANT,
+            value=color,
+        )
+        mh, mw = magnified.shape[:2]
+        oh, ow = output.shape[:2]
+        px = 8 if x >= width // 2 else max(8, ow - mw - 8)
+        py = 8
+        if px + mw > ow or py + mh > oh:
+            return
+        output[py : py + mh, px : px + mw] = magnified
+
     def save_debug(
         self,
         image: np.ndarray,
         state: str,
         label: str | None = None,
         match: TemplateMatch | None = None,
+        force: bool = False,
     ) -> Path | None:
-        if not self.debug:
+        if not self.debug and not force:
             return None
         try:
             output = image.copy()
@@ -183,10 +265,11 @@ class Vision:
                     2,
                     cv2.LINE_AA,
                 )
+            self.debug_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
             path = self.debug_dir / f"{state.lower()}_{timestamp}.png"
             cv2.imwrite(str(path), output)
-            logger.debug("Отладочный снимок сохранён: {}", path)
+            logger.info("Отладочный снимок сохранён: {}", path)
             return path
         except Exception:
             logger.exception("Не удалось сохранить отладочный снимок")
@@ -201,9 +284,10 @@ class Vision:
         label: str = "click",
         hit: bool | None = None,
         keep: int = 80,
+        force: bool = False,
     ) -> Path | None:
         """Снимок с точкой пикселя. При --debug пишется и HIT, и MISS."""
-        if not self.debug:
+        if not self.debug and not force:
             return None
         try:
             output = image.copy()
@@ -231,6 +315,7 @@ class Vision:
                 2,
                 cv2.LINE_AA,
             )
+            self._overlay_pixel_zoom(output, image, x, y, color)
             out_dir = self.debug_dir / "pixels"
             out_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
@@ -257,9 +342,10 @@ class Vision:
         label: str = "",
         hit: bool | None = None,
         keep: int = 40,
+        force: bool = False,
     ) -> Path | None:
         """Снимок с прямоугольником области поиска (OCR/зона)."""
-        if not self.debug:
+        if not self.debug and not force:
             return None
         try:
             output = image.copy()
@@ -312,7 +398,8 @@ class Vision:
         template = load_template(path)
         if template is None:
             return None
-        if image.shape[0] < template.shape[0] or image.shape[1] < template.shape[1]:
+        scaled = self._scale_template(template, image)
+        if image.shape[0] < scaled.shape[0] or image.shape[1] < scaled.shape[1]:
             logger.error(
                 "Шаблон {} больше кадра {}x{}",
                 name,
@@ -320,7 +407,7 @@ class Vision:
                 image.shape[0],
             )
             return None
-        response = cv2.matchTemplate(image, template, cv2.TM_CCOEFF_NORMED)
+        response = cv2.matchTemplate(image, scaled, cv2.TM_CCOEFF_NORMED)
         _, confidence, _, location = cv2.minMaxLoc(response)
         x, y = int(location[0]), int(location[1])
         used = float(threshold or self.threshold)
@@ -328,15 +415,15 @@ class Vision:
         match = TemplateMatch(
             x,
             y,
-            int(template.shape[1]),
-            int(template.shape[0]),
+            int(scaled.shape[1]),
+            int(scaled.shape[0]),
             float(confidence),
         )
         saved = None
         if self.debug:
             saved = self._save_template_probe(
                 image,
-                template,
+                scaled,
                 match,
                 name=name,
                 threshold=used,

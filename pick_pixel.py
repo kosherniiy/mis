@@ -55,6 +55,13 @@ def run_global_picker() -> int:
                     frame_x = min(max(frame_x, 0), frame.shape[1] - 1)
                     blue, green, red = (int(value) for value in frame[frame_y, frame_x])
                     result = format_pixel(frame_x, frame_y, blue, green, red)
+                    layout = getattr(capture, "layout", None)
+                    frame_to_ref = getattr(layout, "frame_to_ref", None)
+                    if callable(frame_to_ref):
+                        ref_x, ref_y = frame_to_ref(frame_x, frame_y)
+                        result = (
+                            f"{result} | эталон 1920x1080: x={ref_x}, y={ref_y}"
+                        )
                     print(result, flush=True)
                     result_path.write_text(result + "\n", encoding="utf-8")
                     print(f"Сохранено: {result_path.resolve()}", flush=True)
