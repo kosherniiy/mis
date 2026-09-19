@@ -12,18 +12,17 @@ from loguru import logger
 
 try:
     from Quartz import (
-        CGAssociateMouseAndMouseCursorPosition,
         CGEventCreate,
         CGEventCreateMouseEvent,
         CGEventGetLocation,
         CGEventPost,
+        CGEventSetIntegerValueField,
         CGEventSourceButtonState,
         CGEventSourceCreate,
         CGEventSourceKeyState,
         CGEventSourceSetLocalEventsFilterDuringSuppressionState,
         CGEventSourceSetLocalEventsSuppressionInterval,
         CGPoint,
-        CGWarpMouseCursorPosition,
         kCGEventFilterMaskPermitLocalKeyboardEvents,
         kCGEventFilterMaskPermitLocalMouseEvents,
         kCGEventFilterMaskPermitSystemDefinedEvents,
@@ -36,12 +35,19 @@ try:
         kCGEventSuppressionStateSuppressionInterval,
         kCGHIDEventTap,
         kCGMouseButtonLeft,
+        kCGMouseEventDeltaX,
+        kCGMouseEventDeltaY,
     )
 except ImportError as exc:  # pragma: no cover
     raise RuntimeError(
         "Для macOS нужен pyobjc-framework-Quartz. "
         "Установи зависимости из requirements-mac.txt"
     ) from exc
+
+try:
+    from Quartz import CGSetLocalEventsSuppressionInterval
+except ImportError:  # pragma: no cover
+    CGSetLocalEventsSuppressionInterval = None
 
 
 WaitKind = Literal["artificial", "forced"]
@@ -54,16 +60,24 @@ _MOUSE_LEFT = 0
 _MOUSE_RIGHT = 1
 _MOUSE_MIDDLE = 2
 
-# Warp без этого молчит ~0.25с после каждого шага — курсор ползёт рывками.
+# Интервал 0 должен висеть на том же source, из которого постятся события.
+# CGWarp этот source не использует и после каждого шага глушит ввод на ~0.25с.
 _EVENT_SOURCE = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState)
 _PERMIT_LOCAL_EVENTS = (
     kCGEventFilterMaskPermitLocalMouseEvents
     | kCGEventFilterMaskPermitLocalKeyboardEvents
     | kCGEventFilterMaskPermitSystemDefinedEvents
 )
+_MOVE_HZ = 120.0
+_last_abs: tuple[int, int] | None = None
 
 
 def _configure_event_source() -> None:
+    if CGSetLocalEventsSuppressionInterval is not None:
+        try:
+            CGSetLocalEventsSuppressionInterval(0.0)
+        except Exception:
+            pass
     if _EVENT_SOURCE is None:
         return
     CGEventSourceSetLocalEventsSuppressionInterval(_EVENT_SOURCE, 0.0)
@@ -110,15 +124,35 @@ def _position() -> tuple[int, int]:
     return int(loc.x), int(loc.y)
 
 
+def _reset_move_tracking(x: int | None = None, y: int | None = None) -> tuple[int, int]:
+    global _last_abs
+    if x is None or y is None:
+        x, y = _position()
+    _last_abs = (int(x), int(y))
+    return _last_abs
+
+
 def _move_to(x: int, y: int) -> None:
-    # Только warp: CGEventPost двигает курсор кусками из‑за coalescing,
-    # а warp+post без delta даёт второй скачок в ту же точку.
-    point = CGPoint(float(int(x)), float(int(y)))
-    CGWarpMouseCursorPosition(point)
-
-
-def _sync_cursor() -> None:
-    CGAssociateMouseAndMouseCursorPosition(True)
+    """Двигает курсор HID-событием с дельтой. Warp здесь нельзя: 0.25с пауза."""
+    global _last_abs
+    x, y = int(x), int(y)
+    if _last_abs is None:
+        _reset_move_tracking()
+    last_x, last_y = _last_abs
+    dx = x - last_x
+    dy = y - last_y
+    if dx == 0 and dy == 0:
+        return
+    event = CGEventCreateMouseEvent(
+        _EVENT_SOURCE,
+        kCGEventMouseMoved,
+        CGPoint(float(x), float(y)),
+        kCGMouseButtonLeft,
+    )
+    CGEventSetIntegerValueField(event, kCGMouseEventDeltaX, int(dx))
+    CGEventSetIntegerValueField(event, kCGMouseEventDeltaY, int(dy))
+    CGEventPost(kCGHIDEventTap, event)
+    _last_abs = (x, y)
 
 
 def _left_down() -> None:
@@ -336,9 +370,14 @@ class HumanInput:
         honor_pause: bool,
         max_spread: float | None = None,
     ) -> None:
-        start_x, start_y = _position()
+        start_x, start_y = _reset_move_tracking()
         distance = math.hypot(x - start_x, y - start_y)
-        steps = max(24, min(110, int(distance / random.uniform(5.5, 9.0))))
+        total_duration = (
+            random.uniform(0.375, 0.675) + min(distance / 2000.0, 0.4)
+        ) / 1.3
+        steps = max(16, int(round(total_duration * _MOVE_HZ)))
+        if distance > 0:
+            steps = max(steps, min(180, int(distance / 4.0)))
         spread_cap = 130.0 if max_spread is None else max(0.0, float(max_spread))
         spread = max(8.0, min(spread_cap, distance * 0.22)) if spread_cap else 0.0
         control1 = (
@@ -349,9 +388,6 @@ class HumanInput:
             start_x + (x - start_x) * random.uniform(0.60, 0.82) + random.uniform(-spread, spread),
             start_y + (y - start_y) * random.uniform(0.60, 0.82) + random.uniform(-spread, spread),
         )
-        total_duration = (
-            random.uniform(0.375, 0.675) + min(distance / 2000.0, 0.4)
-        ) / 1.3
         logger.debug(
             "Наведение курсора: расстояние {:.0f}px, длительность ~{:.2f} сек, шагов {}",
             distance,
@@ -359,13 +395,13 @@ class HumanInput:
             steps,
         )
 
-        _sync_cursor()
         started_at = time.perf_counter()
         for index in range(1, steps + 1):
             if self.restart_requested.is_set():
                 return
-            if honor_pause and index % 8 == 0:
+            if honor_pause and index % 16 == 0:
                 self.wait_if_paused()
+                _reset_move_tracking()
             t = self._ease_in_out(index / steps)
             inv = 1.0 - t
             px = (
@@ -380,16 +416,19 @@ class HumanInput:
                 + 3 * inv * t**2 * control2[1]
                 + t**3 * y
             )
-            jitter = 0 if index == steps else random.randint(1, 3)
+            jitter = 0 if index == steps else random.randint(0, 1)
             _move_to(
                 int(round(px + random.randint(-jitter, jitter))),
                 int(round(py + random.randint(-jitter, jitter))),
             )
             due = started_at + total_duration * (index / steps)
             remaining = due - time.perf_counter()
-            if remaining > 0.0008:
+            if remaining > 0.002:
                 time.sleep(remaining)
-        _sync_cursor()
+            elif remaining > 0:
+                while time.perf_counter() < due:
+                    pass
+        _move_to(int(x), int(y))
 
     def click_human(
         self,
