@@ -1060,6 +1060,7 @@ class MiscritsBehavior:
                 continue
 
             if not self._players_turn_visible(frame):
+                logger.info("Жду надпись «Ваш ход!», бой уже идёт")
                 random_sleep(
                     float(turn_check_interval.get("min", 1.0)),
                     float(turn_check_interval.get("max", 1.5)),

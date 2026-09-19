@@ -49,7 +49,7 @@ epic_stall_attack: 3
 
 rarity_pixel:
   x: 1266
-  y: 57
+  y: 65
   tolerance: 24
   colors:
     common: "#626262"
@@ -130,10 +130,10 @@ selected_attack: 2
 attack_sequence: [2]
 
 turn_prompt_area:
-  left: 858
-  top: 793
-  right: 947
-  bottom: 828
+  left: 850
+  top: 805
+  right: 1100
+  bottom: 858
 
 turn_check_interval:
   min: 1.0
