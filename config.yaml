@@ -8,6 +8,8 @@ macos:
   # 16:10: 0 = fill (левее), 1 = полный cover (правее). 0.5 — середина.
   layout_fit: cover
   layout_match: 0.5
+  # Реальный клиент Miscrits — 1920×1009. Если оставить 1080, «Ваш ход» и нижний HUD уезжают вверх.
+  ui_height: 1009
 # Эталон, под который нарезаны templates и координаты в этом файле.
 # Снимок другого размера масштабируется к этим точкам (окно, fullscreen, Retina).
 reference_resolution:
@@ -141,7 +143,7 @@ turn_prompt_area:
   left: 858
   top: 793
   right: 947
-  bottom: 828
+  bottom: 845
 
 turn_check_interval:
   min: 1.0

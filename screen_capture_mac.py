@@ -246,6 +246,7 @@ class GameWindowCapture:
         reference_height: int = 1080,
         layout_fit: str = "fill",
         layout_match: float = 1.0,
+        y_ref_height: int = 0,
     ) -> None:
         self.window_title = window_title
         self.titlebar_height = max(0, int(titlebar_height))
@@ -254,6 +255,7 @@ class GameWindowCapture:
         self.reference_height = max(1, int(reference_height))
         self.layout_fit = str(layout_fit or "fill")
         self.layout_match = min(max(float(layout_match), 0.0), 1.0)
+        self.y_ref_height = max(0, int(y_ref_height))
         self._sct = mss.mss()
         self.last_region: CaptureRegion | None = None
         self.last_capture_at = 0.0
@@ -266,6 +268,7 @@ class GameWindowCapture:
             self.reference_height,
             self.layout_fit,
             match=self.layout_match,
+            y_ref_h=self.y_ref_height,
         )
 
     def _find_window(self) -> object:
@@ -381,12 +384,13 @@ class GameWindowCapture:
                 ref_h=self.reference_height,
                 fit=self.layout_fit,
                 match=self.layout_match,
+                y_ref_h=self.y_ref_height,
             )
             if not self._logged_size:
                 self._logged_size = True
                 logger.info(
                     "Захват окна: логический {}x{} @ ({}, {}), сырой {}x{}, "
-                    "эталон {}x{}, fit={}, match={:.2f}, масштаб {:.3f}x{:.3f}",
+                    "эталон {}x{} (Y={}), fit={}, match={:.2f}, масштаб {:.3f}x{:.3f}",
                     region.width,
                     region.height,
                     region.left,
@@ -395,6 +399,7 @@ class GameWindowCapture:
                     raw.shape[0],
                     self.reference_width,
                     self.reference_height,
+                    self.layout.y_ref_h,
                     self.layout.fit,
                     self.layout.match,
                     self.layout.scale_x,

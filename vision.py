@@ -105,6 +105,7 @@ class Vision:
         reference_height: int = 1080,
         layout_fit: str = "fill",
         layout_match: float = 1.0,
+        y_ref_height: int = 0,
     ) -> None:
         self.templates_dir = Path(templates_dir)
         self.threshold = threshold
@@ -114,6 +115,7 @@ class Vision:
         self.reference_height = max(1, int(reference_height))
         self.layout_fit = str(layout_fit or "fill")
         self.layout_match = min(max(float(layout_match), 0.0), 1.0)
+        self.y_ref_height = max(0, int(y_ref_height))
         self._layout_override: FrameLayout | None = None
         if debug:
             self.debug_dir.mkdir(parents=True, exist_ok=True)
@@ -136,6 +138,7 @@ class Vision:
             self.reference_height,
             self.layout_fit,
             match=self.layout_match,
+            y_ref_h=self.y_ref_height,
         )
 
     def _scale_template(self, template: np.ndarray, image: np.ndarray) -> np.ndarray:

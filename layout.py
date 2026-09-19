@@ -21,6 +21,7 @@ class FrameLayout:
     content_w: float
     content_h: float
     match: float = 1.0
+    y_ref_h: int = 0
 
     @classmethod
     def build(
@@ -35,6 +36,7 @@ class FrameLayout:
         ref_h: int = 1080,
         fit: str = "fill",
         match: float = 1.0,
+        y_ref_h: int = 0,
     ) -> FrameLayout:
         frame_w = max(1, int(frame_w))
         frame_h = max(1, int(frame_h))
@@ -94,6 +96,7 @@ class FrameLayout:
             content_w=content_w,
             content_h=content_h,
             match=blend,
+            y_ref_h=max(1, int(y_ref_h or ref_h)),
         )
 
     @classmethod
@@ -105,6 +108,7 @@ class FrameLayout:
         ref_h: int = 1080,
         fit: str = "fill",
         match: float = 1.0,
+        y_ref_h: int = 0,
     ) -> FrameLayout:
         return cls.build(
             frame_w,
@@ -117,6 +121,7 @@ class FrameLayout:
             ref_h=ref_h,
             fit=fit,
             match=match,
+            y_ref_h=y_ref_h,
         )
 
     @property
@@ -125,7 +130,7 @@ class FrameLayout:
 
     @property
     def scale_y(self) -> float:
-        return self.content_h / self.ref_h
+        return self.content_h / float(self.y_ref_h or self.ref_h)
 
     def is_identity(self) -> bool:
         return (
