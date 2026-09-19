@@ -949,7 +949,12 @@ class MiscritsBehavior:
     def _players_turn_visible(self, frame: np.ndarray) -> bool:
         """Проверяет наличие надписи «Ваш ход!» в заданной области."""
         try:
-            area = self.config["turn_prompt_area"]
+            area = dict(self.config["turn_prompt_area"])
+            if sys.platform == "darwin":
+                macos = self.config.get("macos")
+                override = macos.get("turn_prompt_area") if isinstance(macos, dict) else None
+                if isinstance(override, dict):
+                    area.update(override)
             left, top, right, bottom = self._ref_rect(
                 int(area["left"]),
                 int(area["top"]),
