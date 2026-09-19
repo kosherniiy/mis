@@ -940,8 +940,50 @@ class MiscritsBehavior:
             logger.exception("Не удалось проверить пиксель кнопки «Поймать»")
             return False
 
+    def _save_turn_prompt_error(
+        self,
+        frame: np.ndarray,
+        left: int | None,
+        top: int | None,
+        right: int | None,
+        bottom: int | None,
+        crop: np.ndarray | None,
+        ocr_images: list[np.ndarray] | None = None,
+    ) -> None:
+        """Сохраняет кадр, кроп и варианты OCR при ошибке «Ваш ход!»."""
+        if (
+            left is not None
+            and top is not None
+            and right is not None
+            and bottom is not None
+        ):
+            self.vision.save_debug_rect(
+                frame,
+                "turn_prompt_error",
+                left,
+                top,
+                right,
+                bottom,
+                label="ошибка OCR",
+                hit=False,
+                force=True,
+            )
+        else:
+            self.vision.save_debug(frame, "turn_prompt_error", force=True)
+        if crop is not None:
+            self.vision.save_debug(crop, "turn_prompt_error_crop", force=True)
+        for index, image in enumerate(ocr_images or []):
+            self.vision.save_debug(
+                image,
+                f"turn_prompt_error_ocr_{index}",
+                force=True,
+            )
+
     def _players_turn_visible(self, frame: np.ndarray) -> bool:
         """Проверяет наличие надписи «Ваш ход!» в заданной области."""
+        left = top = right = bottom = None
+        crop: np.ndarray | None = None
+        ocr_images: list[np.ndarray] = []
         try:
             area = self.config["turn_prompt_area"]
             left, top, right, bottom = self._ref_rect(
@@ -982,7 +1024,8 @@ class MiscritsBehavior:
                 255,
                 cv2.THRESH_BINARY + cv2.THRESH_OTSU,
             )
-            for image in (enlarged, binary, cv2.bitwise_not(binary)):
+            ocr_images = [enlarged, binary, cv2.bitwise_not(binary)]
+            for image in ocr_images:
                 text = pytesseract.image_to_string(
                     image,
                     lang="rus",
@@ -1010,6 +1053,7 @@ class MiscritsBehavior:
                 bottom,
                 label="не найден",
                 hit=False,
+                force=True,
             )
             return False
         except (
@@ -1020,6 +1064,15 @@ class MiscritsBehavior:
             pytesseract.TesseractNotFoundError,
         ):
             logger.exception("Ошибка OCR надписи «Ваш ход!»")
+            self._save_turn_prompt_error(
+                frame,
+                left,
+                top,
+                right,
+                bottom,
+                crop,
+                ocr_images,
+            )
             return False
 
     def _handle_battle(self) -> None:
