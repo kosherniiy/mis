@@ -1,0 +1,8 @@
+loguru>=0.7.2
+mss>=9.0.1
+numpy>=1.26.0
+opencv-python>=4.9.0
+pydirectinput>=1.0.4
+pytesseract>=0.3.13
+PyYAML>=6.0.1
+pywin32>=306
