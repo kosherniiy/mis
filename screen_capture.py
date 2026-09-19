@@ -6,12 +6,9 @@ from time import time
 import cv2
 import mss
 import numpy as np
-import win32api
 import win32con
 import win32gui
 from loguru import logger
-
-from layout import FrameLayout
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,68 +21,21 @@ class CaptureRegion:
     height: int
 
 
-class GameWindowCapture:
-    """Захватывает только клиентскую область окна игры."""
+def _frame_to_region(frame: np.ndarray, region: CaptureRegion) -> np.ndarray:
+    if frame.shape[1] == region.width and frame.shape[0] == region.height:
+        return frame
+    return cv2.resize(frame, (region.width, region.height), interpolation=cv2.INTER_AREA)
 
-    def __init__(
-        self,
-        window_title: str,
-        reference_width: int = 1920,
-        reference_height: int = 1080,
-        layout_fit: str = "fill",
-        **_unused: object,
-    ) -> None:
+
+class GameWindowCapture:
+    """Захватывает клиентскую область окна игры 1:1."""
+
+    def __init__(self, window_title: str, **_unused: object) -> None:
         self.window_title = window_title
-        self.reference_width = max(1, int(reference_width))
-        self.reference_height = max(1, int(reference_height))
-        self.layout_fit = str(layout_fit or "fill")
         self._sct = mss.mss()
         self.last_region: CaptureRegion | None = None
         self.last_capture_at = 0.0
-        self.layout = FrameLayout.from_frame(
-            self.reference_width,
-            self.reference_height,
-            self.reference_width,
-            self.reference_height,
-            self.layout_fit,
-        )
-        self._logged_layout = False
-
-    def _maximized_client_size(self) -> tuple[int, int] | None:
-        """Клиент maximized-окна на текущем мониторе: рабочая область минус шапка."""
-        try:
-            hwnd = self._find_window()
-            monitor = win32api.MonitorFromWindow(
-                hwnd,
-                win32con.MONITOR_DEFAULTTONEAREST,
-            )
-            info = win32api.GetMonitorInfo(monitor)
-            work = info["Work"]
-            work_w = int(work[2] - work[0])
-            work_h = int(work[3] - work[1])
-            caption = int(win32api.GetSystemMetrics(win32con.SM_CYCAPTION))
-            return max(1, work_w), max(1, work_h - caption)
-        except Exception:
-            return None
-
-    def _resolve_layout(
-        self,
-        region: CaptureRegion,
-        frame_w: int,
-        frame_h: int,
-    ) -> tuple[int, int, str]:
-        """Windowed 1920×1009 = identity; fullscreen scales that UI with cover."""
-        requested = self.layout_fit
-        maximized = self._maximized_client_size()
-        if maximized is None:
-            return self.reference_width, self.reference_height, requested
-        max_w, max_h = maximized
-        same_width = abs(region.width - max_w) <= 2
-        if same_width and abs(region.height - max_h) <= 8:
-            return frame_w, frame_h, "identity"
-        if same_width and region.height >= max_h + 16:
-            return max_w, max_h, "cover"
-        return self.reference_width, self.reference_height, requested
+        self._logged_size = False
 
     def _find_window(self) -> int:
         hwnd = win32gui.FindWindow(None, self.window_title)
@@ -106,7 +56,6 @@ class GameWindowCapture:
         return hwnd
 
     def focus(self) -> bool:
-        """Восстанавливает и переводит окно игры на передний план."""
         try:
             hwnd = self._find_window()
             if win32gui.IsIconic(hwnd):
@@ -130,7 +79,6 @@ class GameWindowCapture:
         return CaptureRegion(left, top, width, height)
 
     def capture(self) -> np.ndarray:
-        """Возвращает снимок клиентской области в формате BGR."""
         try:
             region = self.get_region()
             raw = np.asarray(
@@ -143,41 +91,19 @@ class GameWindowCapture:
                     }
                 )
             )
-            frame = cv2.cvtColor(raw, cv2.COLOR_BGRA2BGR)
+            frame = _frame_to_region(cv2.cvtColor(raw, cv2.COLOR_BGRA2BGR), region)
             self.last_region = region
             self.last_capture_at = time()
-            ref_w, ref_h, fit = self._resolve_layout(
-                region,
-                frame.shape[1],
-                frame.shape[0],
-            )
-            self.layout = FrameLayout.build(
-                frame.shape[1],
-                frame.shape[0],
-                region.left,
-                region.top,
-                region.width,
-                region.height,
-                ref_w=ref_w,
-                ref_h=ref_h,
-                fit=fit,
-            )
-            if not self._logged_layout:
-                self._logged_layout = True
+            if not self._logged_size:
+                self._logged_size = True
                 logger.info(
-                    "Захват: окно {}x{} @ ({}, {}), снимок {}x{}, эталон {}x{}, "
-                    "fit={}, масштаб {:.3f}x{:.3f}",
+                    "Захват: окно {}x{} @ ({}, {}), снимок {}x{}",
                     region.width,
                     region.height,
                     region.left,
                     region.top,
                     frame.shape[1],
                     frame.shape[0],
-                    ref_w,
-                    ref_h,
-                    self.layout.fit,
-                    self.layout.scale_x,
-                    self.layout.scale_y,
                 )
             return frame
         except Exception:
@@ -185,25 +111,16 @@ class GameWindowCapture:
             raise
 
     def to_screen(self, x: int, y: int) -> tuple[int, int]:
-        """Переводит координаты снимка в абсолютные экранные координаты."""
-        return self.layout.frame_to_screen(x, y)
+        region = self.last_region
+        if region is None:
+            region = self.get_region()
+        return region.left + int(x), region.top + int(y)
 
     def from_screen(self, x: int, y: int) -> tuple[int, int]:
-        """Переводит экранные координаты в координаты снимка."""
-        return self.layout.screen_to_frame(x, y)
-
-    def map_ref(self, x: int, y: int) -> tuple[int, int]:
-        """Переводит точку из эталона 1920×1080 в пиксели текущего снимка."""
-        return self.layout.ref_to_frame(x, y)
-
-    def map_ref_rect(
-        self,
-        left: int,
-        top: int,
-        right: int,
-        bottom: int,
-    ) -> tuple[int, int, int, int]:
-        return self.layout.ref_to_frame_rect(left, top, right, bottom)
+        region = self.last_region
+        if region is None:
+            region = self.get_region()
+        return int(x) - region.left, int(y) - region.top
 
     def close(self) -> None:
         self._sct.close()

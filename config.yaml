@@ -1,31 +1,12 @@
 window_title: "Miscrits"
+coords_dir: "./layouts"
 macos:
   # Высота шапки окна в точках. 0 — fullscreen / клиент без рамки.
   titlebar_height: 0
   # Имя процесса, если заголовок окна пустой. Для fullscreen на отдельном столе
   # обычно совпадает с приложением, например "Miscrits" или "Google Chrome".
   window_owner: ""
-  # 16:10: 0 = fill (левее), 1 = полный cover (правее). 0.5 — середина.
-  layout_fit: cover
-  layout_match: 0.5
-  # Реальный клиент Miscrits — 1920×1009. Если оставить 1080, «Ваш ход» и нижний HUD уезжают вверх.
-  ui_height: 1009
-  # На 16:10 надпись правее и ниже, чем даёт общая область.
-  turn_prompt_area:
-    left: 850
-    top: 815
-    right: 1140
-    bottom: 856
-# Эталон, под который нарезаны templates и координаты в этом файле.
-# Снимок другого размера масштабируется к этим точкам (окно, fullscreen, Retina).
-reference_resolution:
-  width: 1920
-  height: 1080
-  # fill — растянуть оси независимо (другой размер по ширине и высоте).
-  # contain — сохранить пропорции эталона и добавить поля.
-  # cover — заполнить окно, обрезав края; так Miscrits ведёт себя в fullscreen.
-  # identity — 1:1; на Windows maximized выбирается само (клиент короче из-за рамки).
-  fit: fill
+
 start_phase: "search"
 templates_dir: "./templates"
 confidence_threshold: 0.85
@@ -49,8 +30,6 @@ max_map_click_attempts: 20
 
 map_achievement_close:
   misses_before_click: 5
-  x: 942
-  y: 665
 
 manual_mouse_pause:
   enabled: true
@@ -64,8 +43,6 @@ epic_stall_wait_seconds: 120
 epic_stall_attack: 3
 
 rarity_pixel:
-  x: 1266
-  y: 57
   tolerance: 24
   colors:
     common: "#626262"
@@ -75,10 +52,6 @@ rarity_pixel:
     legendary: "#ffe300"
 
 capture_chance_area:
-  left: 928
-  top: 206
-  right: 989
-  bottom: 230
   tesseract_cmd: "C:/Program Files/Tesseract-OCR/tesseract.exe"
 
 rarity_order:
@@ -103,89 +76,23 @@ autoCatchRares: false
 lowLevelEncounters: false
 stallAnyRarity: false
 
-catch_area:
-  left: 863
-  top: 153
-  right: 1056
-  bottom: 204
-  margin: 6
-
 catch_button_new_check:
-  x: 879
-  y: 168
   duration: 1.0
   interval: 0.2
-
-keep_area:
-  left: 781
-  top: 690
-  right: 946
-  bottom: 749
-  margin: 6
 
 capture_check_delay:
   min: 0.8
   max: 1.4
 
-enemy_hp_area:
-  left: 1455
-  top: 82
-  right: 1558
-  bottom: 116
-
-next_moveset_area:
-  left: 1636
-  top: 881
-  right: 1684
-  bottom: 957
-  margin: 4
-
-auto_catch_moveset_attacks: [4, 4, 2]
-
 selected_attack: 2
 attack_sequence: [2]
-
-turn_prompt_area:
-  left: 858
-  top: 793
-  right: 947
-  bottom: 845
+auto_catch_moveset_attacks: [4, 4, 2]
 
 turn_check_interval:
   min: 1.0
   max: 1.5
 
-attack_area_1:
-  left: 324
-  top: 862
-  right: 639
-  bottom: 979
-  margin: 8
-
-attack_area_2:
-  left: 651
-  top: 866
-  right: 864
-  bottom: 973
-  margin: 8
-
-attack_area_3:
-  left: 1057
-  top: 860
-  right: 1286
-  bottom: 976
-  margin: 8
-
-attack_area_4:
-  left: 1296
-  top: 863
-  right: 1610
-  bottom: 976
-  margin: 8
-
 battle_result_pixel:
-  x: 962
-  y: 305
   color: "#b6c8e1"
   tolerance: 0
 
@@ -193,89 +100,13 @@ level_up_result_check_delay:
   min: 0.7
   max: 1.2
 
-continue_area:
-  left: 863
-  top: 839
-  right: 1057
-  bottom: 903
-  margin: 8
-
-achievement_ok_area:
-  left: 877
-  top: 636
-  right: 1038
-  bottom: 688
-  margin: 6
-
 heal_check_pixel:
-  x: 520
-  y: 403
   color: "#2F3B47"
   tolerance: 20
-
-heal_area:
-  left: 1208
-  top: 51
-  right: 1320
-  bottom: 85
-  margin: 4
-
-heal_confirm_area:
-  left: 813
-  top: 556
-  right: 948
-  bottom: 620
-  margin: 6
 
 heal_confirm_open_delay:
   min: 0.5
   max: 1.0
-
-experience_area:
-  left: 793
-  top: 31
-  right: 865
-  bottom: 86
-  margin: 5
-
-level_action_area:
-  left: 994
-  top: 57
-  right: 1109
-  bottom: 146
-  margin: 8
-
-level_next_area:
-  left: 1065
-  top: 917
-  right: 1262
-  bottom: 978
-  margin: 7
-
-enchant_area:
-  left: 1068
-  top: 691
-  right: 1233
-  bottom: 761
-  margin: 7
-
-evolve_click:
-  x: 945
-  y: 886
-
-character_promotion_area:
-  left: 890
-  top: 724
-  right: 1027
-  bottom: 783
-  margin: 6
-
-training_close_area:
-  left: 1451
-  top: 22
-  right: 1529
-  bottom: 85
-  margin: 5
 
 level_up:
   enabled: true
@@ -288,11 +119,6 @@ level_up:
   level_next_ready_delay:
     min: 4.6
     max: 5.4
-  marker_pixels:
-    - {x: 545, y: 162}
-    - {x: 545, y: 240}
-    - {x: 545, y: 318}
-    - {x: 545, y: 395}
   marker_click_radius:
     x: 24
     y: 18
