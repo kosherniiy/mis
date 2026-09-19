@@ -122,23 +122,101 @@ def _button_down(button: int) -> bool:
     return bool(CGEventSourceButtonState(kCGEventSourceStateHIDSystemState, button))
 
 
+# Движение на macOS строится с нуля: не копируем Windows.
+# Warp прыгает в точку мгновенно, поэтому шаг должен быть < 1px, иначе это телепорт.
+_STEP_PX = 0.5
+_AVG_SPEED_PX_S = 400.0
+_MIN_MOVE_S = 0.32
+_MAX_MOVE_S = 1.8
+
+
 def _position() -> tuple[int, int]:
     loc = CGEventGetLocation(CGEventCreate(None))
     return int(loc.x), int(loc.y)
 
 
+def _position_f() -> tuple[float, float]:
+    loc = CGEventGetLocation(CGEventCreate(None))
+    return float(loc.x), float(loc.y)
+
+
 def _wait_until(deadline: float) -> None:
-    """Ждёт дедлайн без склеивания шагов: sleep на macOS часто просыпается слишком поздно."""
-    while True:
-        remaining = deadline - time.perf_counter()
-        if remaining <= 0:
-            return
-        if remaining > 0.004:
-            time.sleep(max(0.0005, remaining - 0.003))
-            continue
-        while time.perf_counter() < deadline:
-            pass
+    """Спин почти всего интервала: sleep на macOS склеивает соседние шаги в рывок."""
+    remaining = deadline - time.perf_counter()
+    if remaining <= 0:
         return
+    if remaining > 0.01:
+        time.sleep(remaining - 0.006)
+    while time.perf_counter() < deadline:
+        pass
+
+
+def _bezier_point(
+    p0: tuple[float, float],
+    p1: tuple[float, float],
+    p2: tuple[float, float],
+    p3: tuple[float, float],
+    t: float,
+) -> tuple[float, float]:
+    u = 1.0 - t
+    uu, tt = u * u, t * t
+    uuu, ttt = uu * u, tt * t
+    return (
+        uuu * p0[0] + 3.0 * uu * t * p1[0] + 3.0 * u * tt * p2[0] + ttt * p3[0],
+        uuu * p0[1] + 3.0 * uu * t * p1[1] + 3.0 * u * tt * p2[1] + ttt * p3[1],
+    )
+
+
+def _speed_profile(u: float) -> float:
+    """Медленнее на концах, но никогда не останавливается."""
+    u = min(1.0, max(0.0, u))
+    return 0.55 + 0.45 * (4.0 * u * (1.0 - u))
+
+
+def _arc_path(
+    p0: tuple[float, float],
+    p1: tuple[float, float],
+    p2: tuple[float, float],
+    p3: tuple[float, float],
+    spacing: float,
+) -> list[tuple[float, float]]:
+    chord = math.hypot(p3[0] - p0[0], p3[1] - p0[1])
+    samples = min(1800, max(80, int(chord * 3.0) + 80))
+    raw: list[tuple[float, float]] = [p0]
+    lengths = [0.0]
+    total = 0.0
+    prev = p0
+    for index in range(1, samples + 1):
+        point = _bezier_point(p0, p1, p2, p3, index / samples)
+        total += math.hypot(point[0] - prev[0], point[1] - prev[1])
+        raw.append(point)
+        lengths.append(total)
+        prev = point
+    if total <= spacing:
+        return [p0, p3]
+    count = max(2, int(math.ceil(total / spacing)) + 1)
+    path: list[tuple[float, float]] = []
+    cursor = 1
+    for index in range(count):
+        wanted = total * index / (count - 1)
+        while cursor < len(lengths) - 1 and lengths[cursor] < wanted:
+            cursor += 1
+        left = cursor - 1
+        span = lengths[cursor] - lengths[left]
+        if span <= 1e-9:
+            path.append(raw[cursor])
+            continue
+        mix = (wanted - lengths[left]) / span
+        ax, ay = raw[left]
+        bx, by = raw[cursor]
+        path.append((ax + (bx - ax) * mix, ay + (by - ay) * mix))
+    path[0] = p0
+    path[-1] = p3
+    return path
+
+
+def _warp(x: float, y: float) -> None:
+    CGWarpMouseCursorPosition(CGPoint(float(x), float(y)))
 
 
 def _move_to(x: float, y: float, *, announce: bool = False) -> None:
@@ -378,58 +456,61 @@ class HumanInput:
         honor_pause: bool,
         max_spread: float | None = None,
     ) -> None:
-        start_x, start_y = _position()
-        distance = math.hypot(x - start_x, y - start_y)
-        steps = max(24, min(110, int(distance / random.uniform(5.5, 9.0))))
-        spread_cap = 130.0 if max_spread is None else max(0.0, float(max_spread))
-        spread = max(8.0, min(spread_cap, distance * 0.22)) if spread_cap else 0.0
+        start = _position_f()
+        target = (float(x), float(y))
+        distance = math.hypot(target[0] - start[0], target[1] - start[1])
+        if distance < 1.5:
+            _move_to(target[0], target[1], announce=True)
+            _sync_cursor()
+            return
+
+        spread_cap = 36.0 if max_spread is None else max(0.0, float(max_spread))
+        spread = min(spread_cap, max(3.0, distance * 0.08)) if spread_cap else 0.0
         control1 = (
-            start_x + (x - start_x) * random.uniform(0.20, 0.40) + random.uniform(-spread, spread),
-            start_y + (y - start_y) * random.uniform(0.20, 0.40) + random.uniform(-spread, spread),
+            start[0] + (target[0] - start[0]) * random.uniform(0.28, 0.38)
+            + random.uniform(-spread, spread),
+            start[1] + (target[1] - start[1]) * random.uniform(0.28, 0.38)
+            + random.uniform(-spread, spread),
         )
         control2 = (
-            start_x + (x - start_x) * random.uniform(0.60, 0.82) + random.uniform(-spread, spread),
-            start_y + (y - start_y) * random.uniform(0.60, 0.82) + random.uniform(-spread, spread),
+            start[0] + (target[0] - start[0]) * random.uniform(0.62, 0.74)
+            + random.uniform(-spread, spread),
+            start[1] + (target[1] - start[1]) * random.uniform(0.62, 0.74)
+            + random.uniform(-spread, spread),
         )
-        total_duration = (
-            random.uniform(0.375, 0.675) + min(distance / 2000.0, 0.4)
-        ) / 1.3
+        path = _arc_path(start, control1, control2, target, _STEP_PX)
+        steps = max(1, len(path) - 1)
+        duration = min(
+            _MAX_MOVE_S,
+            max(_MIN_MOVE_S, (steps * _STEP_PX) / _AVG_SPEED_PX_S),
+        )
+        weights = [_speed_profile(index / steps) for index in range(1, steps + 1)]
+        inv_sum = sum(1.0 / speed for speed in weights)
         logger.debug(
             "Наведение курсора: расстояние {:.0f}px, длительность ~{:.2f} сек, шагов {}",
             distance,
-            total_duration,
+            duration,
             steps,
         )
 
+        _disable_warp_suppression()
         _sync_cursor()
-        started_at = time.perf_counter()
-        for index in range(1, steps + 1):
-            if self.restart_requested.is_set():
-                return
-            if honor_pause and index % 16 == 0:
-                self.wait_if_paused()
-            t = self._ease_in_out(index / steps)
-            inv = 1.0 - t
-            px = (
-                inv**3 * start_x
-                + 3 * inv**2 * t * control1[0]
-                + 3 * inv * t**2 * control2[0]
-                + t**3 * x
-            )
-            py = (
-                inv**3 * start_y
-                + 3 * inv**2 * t * control1[1]
-                + 3 * inv * t**2 * control2[1]
-                + t**3 * y
-            )
-            jitter = 0 if index == steps else random.randint(1, 3)
-            _move_to(
-                px + random.randint(-jitter, jitter),
-                py + random.randint(-jitter, jitter),
-            )
-            _wait_until(started_at + total_duration * (index / steps))
-        _move_to(float(x), float(y), announce=True)
-        _sync_cursor()
+        due = time.perf_counter()
+        try:
+            for index, ((px, py), speed) in enumerate(zip(path[1:], weights), start=1):
+                if self.restart_requested.is_set():
+                    return
+                if honor_pause and index % 48 == 0:
+                    paused_for = self.wait_if_paused()
+                    _disable_warp_suppression()
+                    if paused_for > 0.02:
+                        due = time.perf_counter()
+                _warp(px, py)
+                due += duration * ((1.0 / speed) / inv_sum)
+                _wait_until(due)
+            _move_to(target[0], target[1], announce=True)
+        finally:
+            _sync_cursor()
 
     def click_human(
         self,
