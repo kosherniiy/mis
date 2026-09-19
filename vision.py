@@ -220,3 +220,157 @@ class Vision:
         except Exception:
             logger.exception("Не удалось сохранить снимок с точкой клика")
             return None
+
+    def probe_template(
+        self,
+        image: np.ndarray,
+        name: str,
+        threshold: float | None = None,
+        folder: str = "template_probe",
+        keep: int = 40,
+    ) -> TemplateMatch | None:
+        """Ищет шаблон, всегда сохраняет снимок лучшего совпадения — даже при промахе."""
+        path = self.template_path(name)
+        template = load_template(path)
+        if template is None:
+            return None
+        if image.shape[0] < template.shape[0] or image.shape[1] < template.shape[1]:
+            logger.error(
+                "Шаблон {} больше кадра {}x{}",
+                name,
+                image.shape[1],
+                image.shape[0],
+            )
+            return None
+        response = cv2.matchTemplate(image, template, cv2.TM_CCOEFF_NORMED)
+        _, confidence, _, location = cv2.minMaxLoc(response)
+        x, y = int(location[0]), int(location[1])
+        used = float(threshold or self.threshold)
+        hit = float(confidence) >= used
+        match = TemplateMatch(
+            x,
+            y,
+            int(template.shape[1]),
+            int(template.shape[0]),
+            float(confidence),
+        )
+        saved = self._save_template_probe(
+            image,
+            template,
+            match,
+            name=name,
+            threshold=used,
+            hit=hit,
+            folder=folder,
+            keep=keep,
+        )
+        logger.info(
+            "Проба {}: {} conf={:.3f}/{} at ({}, {}) кадр={}x{}{}",
+            name,
+            "HIT" if hit else "MISS",
+            confidence,
+            used,
+            x,
+            y,
+            image.shape[1],
+            image.shape[0],
+            f" -> {saved}" if saved else "",
+        )
+        return match if hit else None
+
+    def _save_template_probe(
+        self,
+        image: np.ndarray,
+        template: np.ndarray,
+        match: TemplateMatch,
+        *,
+        name: str,
+        threshold: float,
+        hit: bool,
+        folder: str,
+        keep: int,
+    ) -> Path | None:
+        try:
+            frame_h, frame_w = image.shape[:2]
+            tw, th = match.width, match.height
+            crop = image[match.y : match.y + th, match.x : match.x + tw]
+            annotated = image.copy()
+            color = (0, 220, 0) if hit else (0, 0, 255)
+            cv2.rectangle(
+                annotated,
+                (match.x, match.y),
+                (match.x + tw, match.y + th),
+                color,
+                2,
+            )
+            bar_h = 92
+            canvas = np.zeros((frame_h + bar_h, frame_w, 3), dtype=np.uint8)
+            canvas[bar_h:] = annotated
+            status = "HIT" if hit else "MISS"
+            size_note = ""
+            if frame_w != 1920 or frame_h != 1080:
+                size_note = "  FRAME!=1920x1080"
+            header = (
+                f"{status}  {name}  conf={match.confidence:.3f}/{threshold:.2f}  "
+                f"at ({match.x},{match.y})  frame={frame_w}x{frame_h}{size_note}"
+            )
+            cv2.putText(
+                canvas,
+                header,
+                (8, 22),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                color,
+                2,
+                cv2.LINE_AA,
+            )
+            cv2.putText(
+                canvas,
+                "left=template  right=crop at best match",
+                (8, 46),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.45,
+                (200, 200, 200),
+                1,
+                cv2.LINE_AA,
+            )
+            thumb_h = 40
+            template_thumb = _scale_to_height(template, thumb_h)
+            crop_thumb = _scale_to_height(crop, thumb_h) if crop.size else template_thumb
+            left = 8
+            top = 52
+            canvas[top : top + template_thumb.shape[0], left : left + template_thumb.shape[1]] = (
+                template_thumb
+            )
+            gap = left + template_thumb.shape[1] + 10
+            if gap + crop_thumb.shape[1] < frame_w:
+                canvas[top : top + crop_thumb.shape[0], gap : gap + crop_thumb.shape[1]] = (
+                    crop_thumb
+                )
+            out_dir = self.debug_dir / folder
+            out_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+            out_path = out_dir / f"{status.lower()}_{timestamp}.png"
+            cv2.imwrite(str(out_path), canvas)
+            _prune_debug_dir(out_dir, keep)
+            return out_path
+        except Exception:
+            logger.exception("Не удалось сохранить пробу шаблона {}", name)
+            return None
+
+
+def _scale_to_height(image: np.ndarray, height: int) -> np.ndarray:
+    if image.size == 0 or image.shape[0] == 0:
+        return image
+    scale = height / float(image.shape[0])
+    width = max(1, int(round(image.shape[1] * scale)))
+    return cv2.resize(image, (width, height), interpolation=cv2.INTER_AREA)
+
+
+def _prune_debug_dir(folder: Path, keep: int) -> None:
+    files = sorted(folder.glob("*.png"), key=lambda item: item.stat().st_mtime, reverse=True)
+    for old in files[keep:]:
+        try:
+            old.unlink()
+        except OSError:
+            pass

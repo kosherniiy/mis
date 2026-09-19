@@ -243,6 +243,7 @@ class GameWindowCapture:
         self.last_region: CaptureRegion | None = None
         self.last_capture_at = 0.0
         self._last_owner = ""
+        self._logged_size = False
 
     def _find_window(self) -> object:
         best: object | None = None
@@ -350,6 +351,21 @@ class GameWindowCapture:
                     (region.width, region.height),
                     interpolation=cv2.INTER_AREA,
                 )
+            if not self._logged_size:
+                self._logged_size = True
+                logger.info(
+                    "Захват окна: логический {}x{} @ ({}, {}), сырой снимок {}x{}",
+                    region.width,
+                    region.height,
+                    region.left,
+                    region.top,
+                    raw.shape[1],
+                    raw.shape[0],
+                )
+                if region.width != 1920 or region.height != 1080:
+                    logger.warning(
+                        "Окно не 1920x1080 — Windows-шаблоны и пиксели, скорее всего, съедут"
+                    )
             self.last_region = region
             self.last_capture_at = time()
             return frame

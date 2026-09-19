@@ -613,7 +613,7 @@ class MiscritsBehavior:
         frame = self._screen()
         if frame is None:
             return True
-        if self._find(frame, "battle_indicator.png", save_debug=False):
+        if self.vision.probe_template(frame, "battle_indicator.png", folder="battle_check"):
             self.transition(BotState.BATTLE, "обнаружен индикатор боя")
             return True
         return False

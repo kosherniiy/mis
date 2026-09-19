@@ -12,7 +12,6 @@ from loguru import logger
 
 try:
     from Quartz import (
-        CGAssociateMouseAndMouseCursorPosition,
         CGEventCreate,
         CGEventCreateMouseEvent,
         CGEventGetLocation,
@@ -22,7 +21,6 @@ try:
         CGEventSourceKeyState,
         CGEventSourceSetLocalEventsSuppressionInterval,
         CGPoint,
-        CGWarpMouseCursorPosition,
         kCGEventLeftMouseDown,
         kCGEventLeftMouseUp,
         kCGEventMouseMoved,
@@ -83,11 +81,11 @@ def _position() -> tuple[int, int]:
 
 
 def _move_to(x: int, y: int) -> None:
-    point = CGPoint(float(int(x)), float(int(y)))
+    # Только CGEvent: warp + post дают двойной скачок, а дефолтная
+    # suppression interval 0.25с превращает траекторию в рывки.
     if _EVENT_SOURCE is not None:
         CGEventSourceSetLocalEventsSuppressionInterval(_EVENT_SOURCE, 0.0)
-    CGWarpMouseCursorPosition(point)
-    CGAssociateMouseAndMouseCursorPosition(True)
+    point = CGPoint(float(int(x)), float(int(y)))
     event = CGEventCreateMouseEvent(
         _EVENT_SOURCE,
         kCGEventMouseMoved,
@@ -314,7 +312,8 @@ class HumanInput:
     ) -> None:
         start_x, start_y = _position()
         distance = math.hypot(x - start_x, y - start_y)
-        steps = max(24, min(110, int(distance / random.uniform(5.5, 9.0))))
+        # CGEvent на Mac дороже SendInput: крупные шаги без jitter выглядят плавнее.
+        steps = max(12, min(28, int(distance / random.uniform(28.0, 42.0))))
         spread_cap = 130.0 if max_spread is None else max(0.0, float(max_spread))
         spread = max(8.0, min(spread_cap, distance * 0.22)) if spread_cap else 0.0
         control1 = (
@@ -326,19 +325,20 @@ class HumanInput:
             start_y + (y - start_y) * random.uniform(0.60, 0.82) + random.uniform(-spread, spread),
         )
         total_duration = (
-            random.uniform(0.375, 0.675) + min(distance / 2000.0, 0.4)
-        ) / 1.3
+            random.uniform(0.28, 0.48) + min(distance / 2400.0, 0.28)
+        )
         logger.debug(
-            "Наведение курсора: расстояние {:.0f}px, длительность ~{:.2f} сек",
+            "Наведение курсора: расстояние {:.0f}px, длительность ~{:.2f} сек, шагов {}",
             distance,
             total_duration,
+            steps,
         )
 
         started_at = time.perf_counter()
         for index in range(1, steps + 1):
             if self.restart_requested.is_set():
                 return
-            if honor_pause:
+            if honor_pause and index % 8 == 0:
                 self.wait_if_paused()
             t = self._ease_in_out(index / steps)
             inv = 1.0 - t
@@ -354,11 +354,7 @@ class HumanInput:
                 + 3 * inv * t**2 * control2[1]
                 + t**3 * y
             )
-            jitter = 0 if index == steps else random.randint(1, 3)
-            _move_to(
-                int(px + random.randint(-jitter, jitter)),
-                int(py + random.randint(-jitter, jitter)),
-            )
+            _move_to(int(round(px)), int(round(py)))
             due = started_at + total_duration * (index / steps)
             remaining = due - time.perf_counter()
             if remaining > 0.0008:
