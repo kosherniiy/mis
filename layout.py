@@ -20,6 +20,7 @@ class FrameLayout:
     content_top: float
     content_w: float
     content_h: float
+    match: float = 1.0
 
     @classmethod
     def build(
@@ -33,12 +34,14 @@ class FrameLayout:
         ref_w: int = 1920,
         ref_h: int = 1080,
         fit: str = "fill",
+        match: float = 1.0,
     ) -> FrameLayout:
         frame_w = max(1, int(frame_w))
         frame_h = max(1, int(frame_h))
         ref_w = max(1, int(ref_w))
         ref_h = max(1, int(ref_h))
         mode = str(fit or "fill").strip().lower()
+        blend = min(max(float(match), 0.0), 1.0)
         # Maximized Windows client is often 1920×1009: title bar + taskbar
         # eat height, but Miscrits still paints UI 1:1 from the top-left.
         # Identity only when the frame is shorter — fullscreen is taller and
@@ -59,11 +62,17 @@ class FrameLayout:
             content_left = (frame_w - content_w) / 2.0
             content_top = (frame_h - content_h) / 2.0
         elif mode == "cover":
-            scale = max(frame_w / ref_w, frame_h / ref_h)
-            content_w = ref_w * scale
-            content_h = ref_h * scale
-            content_left = (frame_w - content_w) / 2.0
-            content_top = (frame_h - content_h) / 2.0
+            fill_sx = frame_w / ref_w
+            fill_sy = frame_h / ref_h
+            cover_s = max(fill_sx, fill_sy)
+            scale_x = fill_sx + blend * (cover_s - fill_sx)
+            scale_y = fill_sy + blend * (cover_s - fill_sy)
+            content_w = ref_w * scale_x
+            content_h = ref_h * scale_y
+            cover_left = (frame_w - ref_w * cover_s) / 2.0
+            cover_top = (frame_h - ref_h * cover_s) / 2.0
+            content_left = blend * cover_left
+            content_top = blend * cover_top
         else:
             content_left = 0.0
             content_top = 0.0
@@ -84,6 +93,7 @@ class FrameLayout:
             content_top=content_top,
             content_w=content_w,
             content_h=content_h,
+            match=blend,
         )
 
     @classmethod
@@ -94,6 +104,7 @@ class FrameLayout:
         ref_w: int = 1920,
         ref_h: int = 1080,
         fit: str = "fill",
+        match: float = 1.0,
     ) -> FrameLayout:
         return cls.build(
             frame_w,
@@ -105,6 +116,7 @@ class FrameLayout:
             ref_w=ref_w,
             ref_h=ref_h,
             fit=fit,
+            match=match,
         )
 
     @property

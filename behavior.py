@@ -62,6 +62,11 @@ class MiscritsBehavior:
             reference_width=int(ref.get("width", 1920)),
             reference_height=int(ref.get("height", 1080)),
             layout_fit=layout_fit,
+            layout_match=(
+                float(macos.get("layout_match", 0.5))
+                if sys.platform == "darwin"
+                else 1.0
+            ),
         )
         delays = config.get("action_delays", {})
         manual_pause = config.get("manual_mouse_pause", {})
@@ -106,6 +111,7 @@ class MiscritsBehavior:
         kwargs["titlebar_height"] = int(macos.get("titlebar_height", 0))
         kwargs["window_owner"] = str(macos.get("window_owner", ""))
         kwargs["layout_fit"] = str(macos.get("layout_fit") or "cover")
+        kwargs["layout_match"] = float(macos.get("layout_match", 0.5))
         return kwargs
 
     @staticmethod

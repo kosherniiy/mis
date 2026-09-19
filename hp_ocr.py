@@ -376,12 +376,16 @@ def read_enemy_hp(
         if sys.platform == "darwin":
             macos = config.get("macos") if isinstance(config.get("macos"), dict) else {}
             fit = str(macos.get("layout_fit") or "cover")
+            match = float(macos.get("layout_match", 0.5))
+        else:
+            match = 1.0
         layout = FrameLayout.from_frame(
             frame.shape[1],
             frame.shape[0],
             int(ref.get("width", 1920)),
             int(ref.get("height", 1080)),
             fit,
+            match=match,
         )
         left, top, right, bottom = layout.ref_to_frame_rect(left, top, right, bottom)
         if not (
