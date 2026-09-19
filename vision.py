@@ -123,6 +123,13 @@ class Vision:
         save_debug: bool = True,
     ) -> TemplateMatch | None:
         try:
+            if self.debug:
+                return self.probe_template(
+                    image,
+                    name,
+                    threshold,
+                    folder=f"templates/{Path(name).stem}",
+                )
             path = self.template_path(name)
             template = load_template(path)
             if template is None:
@@ -139,7 +146,7 @@ class Vision:
                 y,
                 confidence,
             )
-            if self.debug and save_debug:
+            if save_debug:
                 self.save_debug(image, state, name, match)
             return match
         except Exception:
@@ -192,33 +199,104 @@ class Vision:
         x: int,
         y: int,
         label: str = "click",
+        hit: bool | None = None,
+        keep: int = 80,
     ) -> Path | None:
-        """Сохраняет снимок с хорошо заметной точкой выполненного клика."""
+        """Снимок с точкой пикселя. При --debug пишется и HIT, и MISS."""
         if not self.debug:
             return None
         try:
             output = image.copy()
-            cv2.circle(output, (x, y), 11, (0, 0, 255), 2, cv2.LINE_AA)
-            cv2.circle(output, (x, y), 3, (0, 0, 255), -1, cv2.LINE_AA)
-            cv2.line(output, (x - 16, y), (x + 16, y), (0, 0, 255), 1, cv2.LINE_AA)
-            cv2.line(output, (x, y - 16), (x, y + 16), (0, 0, 255), 1, cv2.LINE_AA)
+            if hit is True:
+                color = (0, 220, 0)
+                status = "HIT"
+            elif hit is False:
+                color = (0, 0, 255)
+                status = "MISS"
+            else:
+                color = (0, 0, 255)
+                status = "POINT"
+            cv2.circle(output, (x, y), 11, color, 2, cv2.LINE_AA)
+            cv2.circle(output, (x, y), 3, color, -1, cv2.LINE_AA)
+            cv2.line(output, (x - 16, y), (x + 16, y), color, 1, cv2.LINE_AA)
+            cv2.line(output, (x, y - 16), (x, y + 16), color, 1, cv2.LINE_AA)
+            header = f"{status} {label} ({x}, {y})"
             cv2.putText(
                 output,
-                f"{label} ({x}, {y})",
+                header,
                 (max(4, x + 14), max(20, y - 14)),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.58,
-                (0, 0, 255),
+                0.55,
+                color,
                 2,
                 cv2.LINE_AA,
             )
+            out_dir = self.debug_dir / "pixels"
+            out_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-            path = self.debug_dir / f"{state.lower()}_{timestamp}.png"
+            safe_state = "".join(
+                char if char.isalnum() or char in "-_" else "_" for char in state
+            )
+            path = out_dir / f"{status.lower()}_{safe_state}_{timestamp}.png"
             cv2.imwrite(str(path), output)
-            logger.info("Снимок после клика сохранён: {}", path)
+            logger.info("Снимок пикселя сохранён: {}", path)
+            _prune_debug_dir(out_dir, keep)
             return path
         except Exception:
             logger.exception("Не удалось сохранить снимок с точкой клика")
+            return None
+
+    def save_debug_rect(
+        self,
+        image: np.ndarray,
+        state: str,
+        left: int,
+        top: int,
+        right: int,
+        bottom: int,
+        label: str = "",
+        hit: bool | None = None,
+        keep: int = 40,
+    ) -> Path | None:
+        """Снимок с прямоугольником области поиска (OCR/зона)."""
+        if not self.debug:
+            return None
+        try:
+            output = image.copy()
+            if hit is True:
+                color = (0, 220, 0)
+                status = "HIT"
+            elif hit is False:
+                color = (0, 0, 255)
+                status = "MISS"
+            else:
+                color = (0, 200, 255)
+                status = "AREA"
+            cv2.rectangle(output, (left, top), (right, bottom), color, 2)
+            header = f"{status} {state} {label} ({left},{top})-({right},{bottom})"
+            cv2.putText(
+                output,
+                header,
+                (max(4, left), max(18, top - 8)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                color,
+                2,
+                cv2.LINE_AA,
+            )
+            out_dir = self.debug_dir / "areas"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+            safe_state = "".join(
+                char if char.isalnum() or char in "-_" else "_" for char in state
+            )
+            path = out_dir / f"{status.lower()}_{safe_state}_{timestamp}.png"
+            cv2.imwrite(str(path), output)
+            logger.info("Снимок области сохранён: {}", path)
+            _prune_debug_dir(out_dir, keep)
+            return path
+        except Exception:
+            logger.exception("Не удалось сохранить снимок области")
             return None
 
     def probe_template(
@@ -254,16 +332,18 @@ class Vision:
             int(template.shape[0]),
             float(confidence),
         )
-        saved = self._save_template_probe(
-            image,
-            template,
-            match,
-            name=name,
-            threshold=used,
-            hit=hit,
-            folder=folder,
-            keep=keep,
-        )
+        saved = None
+        if self.debug:
+            saved = self._save_template_probe(
+                image,
+                template,
+                match,
+                name=name,
+                threshold=used,
+                hit=hit,
+                folder=folder,
+                keep=keep,
+            )
         logger.info(
             "Проба {}: {} conf={:.3f}/{} at ({}, {}) кадр={}x{}{}",
             name,

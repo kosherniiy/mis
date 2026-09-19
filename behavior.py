@@ -417,6 +417,7 @@ class MiscritsBehavior:
                     x,
                     y,
                     f"#{index} {nearest} {actual_hex}",
+                    hit=nearest == "yellow",
                 )
                 if nearest == "yellow":
                     result.append((index, x, y))
@@ -464,9 +465,19 @@ class MiscritsBehavior:
                     "battle_result",
                     x,
                     y,
-                    f"result {actual_hex}",
+                    f"result {actual_hex} d={distance:.1f}",
+                    hit=True,
                 )
                 return True
+            actual_hex = f"#{red:02x}{green:02x}{blue:02x}"
+            self.vision.save_debug_point(
+                frame,
+                "battle_result",
+                x,
+                y,
+                f"result {actual_hex} d={distance:.1f}",
+                hit=False,
+            )
             return False
         except (KeyError, TypeError, ValueError):
             logger.exception("Некорректный battle_result_pixel в config.yaml")
@@ -507,6 +518,14 @@ class MiscritsBehavior:
                 actual_hex,
                 distance,
                 needed,
+            )
+            self.vision.save_debug_point(
+                frame,
+                "heal_check",
+                x,
+                y,
+                f"{actual_hex} d={distance:.1f} need={needed}",
+                hit=needed,
             )
             return needed
         except (KeyError, TypeError, ValueError):
@@ -615,7 +634,7 @@ class MiscritsBehavior:
         frame = self._screen()
         if frame is None:
             return True
-        if self.vision.probe_template(frame, "battle_indicator.png", folder="battle_check"):
+        if self._find(frame, "battle_indicator.png"):
             self.transition(BotState.BATTLE, "обнаружен индикатор боя")
             return True
         return False
@@ -662,14 +681,16 @@ class MiscritsBehavior:
                 logger.error("В rarity_pixel.colors нет корректных цветов")
                 return None
             rarity, distance = min(candidates, key=lambda item: item[1])
+            matched = distance <= tolerance
             self.vision.save_debug_point(
                 frame,
                 "rarity_pixel",
                 x,
                 y,
                 f"{rarity} {actual_hex} d={distance:.1f}",
+                hit=matched,
             )
-            if distance <= tolerance:
+            if matched:
                 self.template_misses = 0
                 logger.info(
                     "Редкость по пикселю ({}, {}): {}, цвет={}, отклонение={:.1f}",
@@ -732,6 +753,7 @@ class MiscritsBehavior:
             variants = (enlarged, binary, cv2.bitwise_not(binary))
             ocr_config = "--psm 7 --oem 3 -c tessedit_char_whitelist=0123456789%"
             recognized: list[str] = []
+            chance_found: int | None = None
             for image in variants:
                 text = pytesseract.image_to_string(image, config=ocr_config).strip()
                 recognized.append(text)
@@ -740,8 +762,26 @@ class MiscritsBehavior:
                     continue
                 chance = int(match.group())
                 if 0 <= chance <= 100:
+                    chance_found = chance
                     logger.info("Вероятность поимки мискрита: {}%", chance)
-                    return chance
+                    break
+
+            self.vision.save_debug_rect(
+                frame,
+                "capture_chance",
+                left,
+                top,
+                right,
+                bottom,
+                label=(
+                    f"{chance_found}%"
+                    if chance_found is not None
+                    else f"ocr={recognized}"
+                ),
+                hit=chance_found is not None,
+            )
+            if chance_found is not None:
+                return chance_found
 
             logger.warning(
                 "Не удалось прочитать вероятность поимки в области "
@@ -763,7 +803,22 @@ class MiscritsBehavior:
         return None
 
     def _read_enemy_hp(self, frame: np.ndarray) -> tuple[int, int] | None:
-        return read_enemy_hp(frame, self.config)
+        hp = read_enemy_hp(frame, self.config)
+        try:
+            area = self.config.get("enemy_hp_area", {})
+            self.vision.save_debug_rect(
+                frame,
+                "enemy_hp",
+                int(area["left"]),
+                int(area["top"]),
+                int(area["right"]),
+                int(area["bottom"]),
+                label="" if hp is None else f"{hp[0]}/{hp[1]}",
+                hit=hp is not None,
+            )
+        except (KeyError, TypeError, ValueError):
+            pass
+        return hp
 
     def _rarity_below_epic(self, rarity: str) -> bool:
         order = [str(item) for item in self.config.get("rarity_order", [])]
@@ -821,7 +876,16 @@ class MiscritsBehavior:
                 all_same,
                 all_same,
             )
-            return not all_same
+            is_new = not all_same
+            self.vision.save_debug_point(
+                current,
+                "catch_button_new",
+                x,
+                y,
+                f"new={is_new} {sample_hex[-1] if sample_hex else ''}",
+                hit=is_new,
+            )
+            return is_new
         except (KeyError, TypeError, ValueError):
             logger.exception("Не удалось проверить пиксель кнопки «Поймать»")
             return False
@@ -874,7 +938,27 @@ class MiscritsBehavior:
                 )
                 normalized = re.sub(r"[^а-я]", "", text.casefold().replace("ё", "е"))
                 if "вашход" in normalized:
+                    self.vision.save_debug_rect(
+                        frame,
+                        "turn_prompt",
+                        left,
+                        top,
+                        right,
+                        bottom,
+                        label="ваш ход",
+                        hit=True,
+                    )
                     return True
+            self.vision.save_debug_rect(
+                frame,
+                "turn_prompt",
+                left,
+                top,
+                right,
+                bottom,
+                label="не найден",
+                hit=False,
+            )
             return False
         except (
             KeyError,

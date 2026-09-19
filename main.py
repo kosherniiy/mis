@@ -112,6 +112,15 @@ def main() -> int:
         help="Сохранять скрин каждого боя в папку encounters.",
     )
     parser.add_argument(
+        "--debug",
+        dest="debug",
+        action="store_true",
+        help=(
+            "Сохранять снимок каждой попытки найти шаблон, пиксель или область: "
+            "debug/templates, debug/pixels, debug/areas."
+        ),
+    )
+    parser.add_argument(
         "--stallAnyRarity",
         dest="stall_any_rarity",
         action="store_true",
@@ -141,6 +150,8 @@ def main() -> int:
         config["lowLevelEncounters"] = True
     if args.debug_encounters:
         config["debugEncounters"] = True
+    if args.debug:
+        config["debug"] = True
     if args.stall_any_rarity:
         config["stallAnyRarity"] = True
 
