@@ -84,18 +84,17 @@ class MiscritsBehavior:
 
     @staticmethod
     def _capture_kwargs(config: dict[str, Any]) -> dict[str, Any]:
+        if sys.platform != "darwin":
+            return {}
+        macos = config.get("macos") if isinstance(config.get("macos"), dict) else {}
         ref = config.get("reference_resolution")
         ref = ref if isinstance(ref, dict) else {}
-        kwargs: dict[str, Any] = {
+        return {
+            "titlebar_height": int(macos.get("titlebar_height", 0)),
+            "window_owner": str(macos.get("window_owner", "")),
             "reference_width": int(ref.get("width", 1920)),
             "reference_height": int(ref.get("height", 1080)),
         }
-        if sys.platform != "darwin":
-            return kwargs
-        macos = config.get("macos") if isinstance(config.get("macos"), dict) else {}
-        kwargs["titlebar_height"] = int(macos.get("titlebar_height", 0))
-        kwargs["window_owner"] = str(macos.get("window_owner", ""))
-        return kwargs
 
     @staticmethod
     def _restore_coordinates(value: object) -> tuple[int, int] | None:
