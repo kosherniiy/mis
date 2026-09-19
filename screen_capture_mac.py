@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from dataclasses import dataclass
 from time import sleep, time
@@ -252,13 +253,19 @@ class GameWindowCapture:
         self._logged_size = False
 
     def _find_window(self) -> object:
-        best: object | None = None
-        best_area = -1.0
+        own_pid = os.getpid()
+        named: list[tuple[object, float]] = []
+        owned: list[tuple[object, float]] = []
+        title = self.window_title.casefold()
         for window in _list_windows():
             if _window_layer(window) != 0:
                 continue
+            if _window_pid(window) == own_pid:
+                continue
             name = _window_name(window)
             owner = _window_owner(window)
+            if "coords" in name.casefold():
+                continue
             if not _window_matches(self.window_title, name, owner, self.window_owner):
                 continue
             bounds = _window_bounds(window)
@@ -266,16 +273,21 @@ class GameWindowCapture:
             height = bounds["Height"]
             if width < 200 or height < 200:
                 continue
-            area = width * height
-            if area > best_area:
-                best = window
-                best_area = area
-        if best is None:
+            # CGWindowList часто отдаёт фантом 500x500@(0,400) без имени.
+            if not name and int(width) == 500 and int(height) == 500:
+                continue
+            item = (window, width * height)
+            if title and title in name.casefold():
+                named.append(item)
+            else:
+                owned.append(item)
+        pool = named or owned
+        if not pool:
             raise RuntimeError(
                 f"Окно с заголовком '{self.window_title}' не найдено, "
                 f"включая другие рабочие столы. Видно: {_describe_windows()}"
             )
-        return best
+        return max(pool, key=lambda item: item[1])[0]
 
     def focus(self) -> bool:
         """Переводит процесс игры на передний план, в том числе с другого Space."""

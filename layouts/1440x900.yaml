@@ -1,0 +1,241 @@
+resolution:
+  width: 1440
+  height: 900
+objects:
+  1:
+    key: rarity_pixel
+    name: Редкость
+    kind: pixel
+    x: 965
+    y: 49
+  2:
+    key: catch_button_new_check
+    name: Пиксель «Поймать»
+    kind: pixel
+    x: 655
+    y: 141
+  3:
+    key: battle_result_pixel
+    name: Конец боя
+    kind: pixel
+    x: 322
+    y: 150
+  4:
+    key: heal_check_pixel
+    name: Нужно лечение
+    kind: pixel
+    x: 369
+    y: 370
+  5:
+    key: evolve_click
+    name: Эволюция
+    kind: pixel
+    x: 945
+    y: 886
+  6:
+    key: map_achievement_close
+    name: Закрыть достижение
+    kind: pixel
+    x: 942
+    y: 665
+  7:
+    key: level_marker_1
+    name: Маркер мискрита 1
+    kind: pixel
+    x: 545
+    y: 162
+  8:
+    key: level_marker_2
+    name: Маркер мискрита 2
+    kind: pixel
+    x: 545
+    y: 240
+  9:
+    key: level_marker_3
+    name: Маркер мискрита 3
+    kind: pixel
+    x: 545
+    y: 318
+  10:
+    key: level_marker_4
+    name: Маркер мискрита 4
+    kind: pixel
+    x: 545
+    y: 395
+  11:
+    key: capture_chance_area
+    name: Шанс поимки
+    kind: rect
+    left: 683
+    top: 165
+    right: 756
+    bottom: 189
+  12:
+    key: catch_area
+    name: Кнопка «Поймать»
+    kind: rect
+    left: 649
+    top: 126
+    right: 793
+    bottom: 162
+    margin: 6
+  13:
+    key: keep_area
+    name: «Оставить»
+    kind: rect
+    left: 585
+    top: 603
+    right: 701
+    bottom: 642
+    margin: 6
+  14:
+    key: enemy_hp_area
+    name: HP врага
+    kind: rect
+    left: 1128
+    top: 66
+    right: 1195
+    bottom: 91
+  15:
+    key: next_moveset_area
+    name: Следующий мувсет
+    kind: rect
+    left: 1262
+    top: 796
+    right: 1300
+    bottom: 862
+    margin: 4
+  16:
+    key: turn_prompt_area
+    name: «Ваш ход!»
+    kind: rect
+    left: 636
+    top: 725
+    right: 712
+    bottom: 757
+  17:
+    key: attack_area_1
+    name: Атака 1
+    kind: rect
+    left: 213
+    top: 784
+    right: 455
+    bottom: 865
+    margin: 8
+  18:
+    key: attack_area_2
+    name: Атака 2
+    kind: rect
+    left: 472
+    top: 789
+    right: 601
+    bottom: 859
+    margin: 8
+  19:
+    key: attack_area_3
+    name: Атака 3
+    kind: rect
+    left: 822
+    top: 787
+    right: 970
+    bottom: 843
+    margin: 8
+  20:
+    key: attack_area_4
+    name: Атака 4
+    kind: rect
+    left: 989
+    top: 787
+    right: 1230
+    bottom: 857
+    margin: 8
+  21:
+    key: continue_area
+    name: «Далее»
+    kind: rect
+    left: 652
+    top: 726
+    right: 789
+    bottom: 762
+    margin: 8
+  22:
+    key: achievement_ok_area
+    name: ОК достижения
+    kind: rect
+    left: 661
+    top: 559
+    right: 778
+    bottom: 592
+    margin: 6
+  23:
+    key: heal_area
+    name: Лечение
+    kind: rect
+    left: 923
+    top: 43
+    right: 1005
+    bottom: 68
+    margin: 4
+  24:
+    key: heal_confirm_area
+    name: Подтверждение лечения
+    kind: rect
+    left: 606
+    top: 498
+    right: 705
+    bottom: 534
+    margin: 6
+  25:
+    key: experience_area
+    name: Вкладка «Опыт»
+    kind: rect
+    left: 596
+    top: 26
+    right: 650
+    bottom: 65
+    margin: 5
+  26:
+    key: level_action_area
+    name: Кнопка прокачки
+    kind: rect
+    left: 754
+    top: 98
+    right: 828
+    bottom: 151
+    margin: 8
+  27:
+    key: level_next_area
+    name: «Далее» прокачки
+    kind: rect
+    left: 820
+    top: 788
+    right: 950
+    bottom: 822
+    margin: 7
+  28:
+    key: enchant_area
+    name: Прокачка способности
+    kind: rect
+    left: 813
+    top: 603
+    right: 931
+    bottom: 648
+    margin: 7
+  29:
+    key: character_promotion_area
+    name: Повышение персонажа
+    kind: rect
+    left: 674
+    top: 633
+    right: 765
+    bottom: 665
+    margin: 6
+  30:
+    key: training_close_area
+    name: Закрыть тренировку
+    kind: rect
+    left: 1128
+    top: 70
+    right: 1164
+    bottom: 104
+    margin: 5
