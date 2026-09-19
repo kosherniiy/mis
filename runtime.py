@@ -56,20 +56,12 @@ __all__ = [
 
 def make_game_capture(config: dict) -> GameWindowCapture:
     title = str(config.get("window_title", "Miscrits"))
-    ref = config.get("reference_resolution")
-    ref = ref if isinstance(ref, dict) else {}
-    kwargs: dict = {
-        "reference_width": int(ref.get("width", 1920)),
-        "reference_height": int(ref.get("height", 1080)),
-        "layout_fit": str(ref.get("fit", "fill")),
-    }
     if sys.platform != "darwin":
-        return GameWindowCapture(title, **kwargs)
+        return GameWindowCapture(title)
     macos = config.get("macos", {}) if isinstance(config.get("macos"), dict) else {}
-    kwargs["titlebar_height"] = int(macos.get("titlebar_height", 0))
-    kwargs["window_owner"] = str(macos.get("window_owner", ""))
-    kwargs["layout_fit"] = str(macos.get("layout_fit") or "cover")
-    kwargs["layout_match"] = float(macos.get("layout_match", 0.5))
-    kwargs["y_ref_height"] = int(macos.get("ui_height", 1009))
-    return GameWindowCapture(title, **kwargs)
+    return GameWindowCapture(
+        title,
+        titlebar_height=int(macos.get("titlebar_height", 0)),
+        window_owner=str(macos.get("window_owner", "")),
+    )
 

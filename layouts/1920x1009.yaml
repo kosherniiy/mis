@@ -1,0 +1,244 @@
+# Клиентская область Miscrits 1920×1009 (Windows maximized).
+# Номера — для calibrate.py: клавиша выбирает объект, ЛКМ = пиксель/ЛВ, ПКМ = ПН.
+resolution:
+  width: 1920
+  height: 1009
+
+objects:
+  1:
+    key: rarity_pixel
+    name: Редкость
+    kind: pixel
+    x: 1266
+    y: 57
+  2:
+    key: catch_button_new_check
+    name: Пиксель «Поймать»
+    kind: pixel
+    x: 879
+    y: 168
+  3:
+    key: battle_result_pixel
+    name: Конец боя
+    kind: pixel
+    x: 962
+    y: 305
+  4:
+    key: heal_check_pixel
+    name: Нужно лечение
+    kind: pixel
+    x: 520
+    y: 403
+  5:
+    key: evolve_click
+    name: Эволюция
+    kind: pixel
+    x: 945
+    y: 886
+  6:
+    key: map_achievement_close
+    name: Закрыть достижение
+    kind: pixel
+    x: 942
+    y: 665
+  7:
+    key: level_marker_1
+    name: Маркер мискрита 1
+    kind: pixel
+    x: 545
+    y: 162
+  8:
+    key: level_marker_2
+    name: Маркер мискрита 2
+    kind: pixel
+    x: 545
+    y: 240
+  9:
+    key: level_marker_3
+    name: Маркер мискрита 3
+    kind: pixel
+    x: 545
+    y: 318
+  10:
+    key: level_marker_4
+    name: Маркер мискрита 4
+    kind: pixel
+    x: 545
+    y: 395
+  11:
+    key: capture_chance_area
+    name: Шанс поимки
+    kind: rect
+    left: 928
+    top: 206
+    right: 989
+    bottom: 230
+  12:
+    key: catch_area
+    name: Кнопка «Поймать»
+    kind: rect
+    left: 863
+    top: 153
+    right: 1056
+    bottom: 204
+    margin: 6
+  13:
+    key: keep_area
+    name: «Оставить»
+    kind: rect
+    left: 781
+    top: 690
+    right: 946
+    bottom: 749
+    margin: 6
+  14:
+    key: enemy_hp_area
+    name: HP врага
+    kind: rect
+    left: 1455
+    top: 82
+    right: 1558
+    bottom: 116
+  15:
+    key: next_moveset_area
+    name: Следующий мувсет
+    kind: rect
+    left: 1636
+    top: 881
+    right: 1684
+    bottom: 957
+    margin: 4
+  16:
+    key: turn_prompt_area
+    name: «Ваш ход!»
+    kind: rect
+    left: 858
+    top: 793
+    right: 947
+    bottom: 845
+  17:
+    key: attack_area_1
+    name: Атака 1
+    kind: rect
+    left: 324
+    top: 862
+    right: 639
+    bottom: 979
+    margin: 8
+  18:
+    key: attack_area_2
+    name: Атака 2
+    kind: rect
+    left: 651
+    top: 866
+    right: 864
+    bottom: 973
+    margin: 8
+  19:
+    key: attack_area_3
+    name: Атака 3
+    kind: rect
+    left: 1057
+    top: 860
+    right: 1286
+    bottom: 976
+    margin: 8
+  20:
+    key: attack_area_4
+    name: Атака 4
+    kind: rect
+    left: 1296
+    top: 863
+    right: 1610
+    bottom: 976
+    margin: 8
+  21:
+    key: continue_area
+    name: «Далее»
+    kind: rect
+    left: 863
+    top: 839
+    right: 1057
+    bottom: 903
+    margin: 8
+  22:
+    key: achievement_ok_area
+    name: ОК достижения
+    kind: rect
+    left: 877
+    top: 636
+    right: 1038
+    bottom: 688
+    margin: 6
+  23:
+    key: heal_area
+    name: Лечение
+    kind: rect
+    left: 1208
+    top: 51
+    right: 1320
+    bottom: 85
+    margin: 4
+  24:
+    key: heal_confirm_area
+    name: Подтверждение лечения
+    kind: rect
+    left: 813
+    top: 556
+    right: 948
+    bottom: 620
+    margin: 6
+  25:
+    key: experience_area
+    name: Вкладка «Опыт»
+    kind: rect
+    left: 793
+    top: 31
+    right: 865
+    bottom: 86
+    margin: 5
+  26:
+    key: level_action_area
+    name: Кнопка прокачки
+    kind: rect
+    left: 994
+    top: 57
+    right: 1109
+    bottom: 146
+    margin: 8
+  27:
+    key: level_next_area
+    name: «Далее» прокачки
+    kind: rect
+    left: 1065
+    top: 917
+    right: 1262
+    bottom: 978
+    margin: 7
+  28:
+    key: enchant_area
+    name: Прокачка способности
+    kind: rect
+    left: 1068
+    top: 691
+    right: 1233
+    bottom: 761
+    margin: 7
+  29:
+    key: character_promotion_area
+    name: Повышение персонажа
+    kind: rect
+    left: 890
+    top: 724
+    right: 1027
+    bottom: 783
+    margin: 6
+  30:
+    key: training_close_area
+    name: Закрыть тренировку
+    kind: rect
+    left: 1451
+    top: 22
+    right: 1529
+    bottom: 85
+    margin: 5

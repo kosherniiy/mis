@@ -15,6 +15,7 @@ import numpy as np
 import pytesseract
 from loguru import logger
 
+from coords import CoordBook
 from hp_ocr import read_enemy_hp
 from notifier import NtfyNotifier
 from runtime import GameWindowCapture, HumanInput, WaitKind, random_sleep
@@ -48,31 +49,14 @@ class MiscritsBehavior:
             str(config.get("window_title", "Miscrits")),
             **self._capture_kwargs(config),
         )
-        ref = config.get("reference_resolution")
-        ref = ref if isinstance(ref, dict) else {}
-        layout_fit = str(ref.get("fit", "fill"))
-        if sys.platform == "darwin":
-            macos = config.get("macos") if isinstance(config.get("macos"), dict) else {}
-            layout_fit = str(macos.get("layout_fit") or "cover")
         self.vision = Vision(
             config.get("templates_dir", "./templates"),
             float(config.get("confidence_threshold", 0.85)),
             bool(config.get("debug", False)),
             "./debug",
-            reference_width=int(ref.get("width", 1920)),
-            reference_height=int(ref.get("height", 1080)),
-            layout_fit=layout_fit,
-            layout_match=(
-                float(macos.get("layout_match", 0.5))
-                if sys.platform == "darwin"
-                else 1.0
-            ),
-            y_ref_height=(
-                int(macos.get("ui_height", 1009))
-                if sys.platform == "darwin"
-                else 0
-            ),
         )
+        self.coords = CoordBook(Path(str(config.get("coords_dir", "./layouts"))))
+        self._coords_size: tuple[int, int] | None = None
         delays = config.get("action_delays", {})
         manual_pause = config.get("manual_mouse_pause", {})
         self.input = HumanInput(
@@ -103,22 +87,13 @@ class MiscritsBehavior:
 
     @staticmethod
     def _capture_kwargs(config: dict[str, Any]) -> dict[str, Any]:
-        ref = config.get("reference_resolution")
-        ref = ref if isinstance(ref, dict) else {}
-        kwargs: dict[str, Any] = {
-            "reference_width": int(ref.get("width", 1920)),
-            "reference_height": int(ref.get("height", 1080)),
-            "layout_fit": str(ref.get("fit", "fill")),
-        }
         if sys.platform != "darwin":
-            return kwargs
+            return {}
         macos = config.get("macos") if isinstance(config.get("macos"), dict) else {}
-        kwargs["titlebar_height"] = int(macos.get("titlebar_height", 0))
-        kwargs["window_owner"] = str(macos.get("window_owner", ""))
-        kwargs["layout_fit"] = str(macos.get("layout_fit") or "cover")
-        kwargs["layout_match"] = float(macos.get("layout_match", 0.5))
-        kwargs["y_ref_height"] = int(macos.get("ui_height", 1009))
-        return kwargs
+        return {
+            "titlebar_height": int(macos.get("titlebar_height", 0)),
+            "window_owner": str(macos.get("window_owner", "")),
+        }
 
     @staticmethod
     def _restore_coordinates(value: object) -> tuple[int, int] | None:
@@ -142,10 +117,7 @@ class MiscritsBehavior:
         self.state = new_state
 
     def _ref_xy(self, x: int, y: int) -> tuple[int, int]:
-        mapper = getattr(self.capture, "map_ref", None)
-        if callable(mapper):
-            return mapper(x, y)
-        return x, y
+        return int(x), int(y)
 
     def _ref_rect(
         self,
@@ -154,10 +126,15 @@ class MiscritsBehavior:
         right: int,
         bottom: int,
     ) -> tuple[int, int, int, int]:
-        mapper = getattr(self.capture, "map_ref_rect", None)
-        if callable(mapper):
-            return mapper(left, top, right, bottom)
-        return left, top, right, bottom
+        return int(left), int(top), int(right), int(bottom)
+
+    def _bind_coords(self, frame: np.ndarray) -> None:
+        size = (int(frame.shape[1]), int(frame.shape[0]))
+        if self._coords_size == size:
+            return
+        self.coords.load(size[0], size[1])
+        self.coords.apply_to_config(self.config)
+        self._coords_size = size
 
     def run(self) -> None:
         logger.info("Запуск state machine Miscrits")
@@ -235,10 +212,12 @@ class MiscritsBehavior:
                 return None
             self.input.wait_if_paused()
             self.last_frame = self.capture.capture()
-            binder = getattr(self.vision, "use_layout", None)
-            if callable(binder):
-                binder(getattr(self.capture, "layout", None))
+            self._bind_coords(self.last_frame)
             return self.last_frame
+        except FileNotFoundError as exc:
+            logger.error("{}", exc)
+            self.transition(BotState.ERROR_PAUSE, "нет файла координат для разрешения")
+            return None
         except Exception:
             logger.exception("Ошибка захвата экрана")
             self.transition(BotState.ERROR_PAUSE, "ошибка захвата экрана")
@@ -949,12 +928,7 @@ class MiscritsBehavior:
     def _players_turn_visible(self, frame: np.ndarray) -> bool:
         """Проверяет наличие надписи «Ваш ход!» в заданной области."""
         try:
-            area = dict(self.config["turn_prompt_area"])
-            if sys.platform == "darwin":
-                macos = self.config.get("macos")
-                override = macos.get("turn_prompt_area") if isinstance(macos, dict) else None
-                if isinstance(override, dict):
-                    area.update(override)
+            area = self.config["turn_prompt_area"]
             left, top, right, bottom = self._ref_rect(
                 int(area["left"]),
                 int(area["top"]),

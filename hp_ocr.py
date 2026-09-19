@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-import sys
 import traceback
 from collections import Counter
 from datetime import datetime
@@ -13,7 +12,6 @@ import numpy as np
 import pytesseract
 from loguru import logger
 
-from layout import FrameLayout
 from tesseract_bin import resolve_tesseract_cmd
 
 OCR_CONFIG = "--psm 7 --oem 3 -c tessedit_char_whitelist=0123456789/"
@@ -370,27 +368,6 @@ def read_enemy_hp(
         top = int(area["top"])
         right = int(area["right"])
         bottom = int(area["bottom"])
-        ref = config.get("reference_resolution")
-        ref = ref if isinstance(ref, dict) else {}
-        fit = str(ref.get("fit", "fill"))
-        if sys.platform == "darwin":
-            macos = config.get("macos") if isinstance(config.get("macos"), dict) else {}
-            fit = str(macos.get("layout_fit") or "cover")
-            match = float(macos.get("layout_match", 0.5))
-            y_ref_h = int(macos.get("ui_height", 1009))
-        else:
-            match = 1.0
-            y_ref_h = 0
-        layout = FrameLayout.from_frame(
-            frame.shape[1],
-            frame.shape[0],
-            int(ref.get("width", 1920)),
-            int(ref.get("height", 1080)),
-            fit,
-            match=match,
-            y_ref_h=y_ref_h,
-        )
-        left, top, right, bottom = layout.ref_to_frame_rect(left, top, right, bottom)
         if not (
             0 <= left < right <= frame.shape[1]
             and 0 <= top < bottom <= frame.shape[0]

@@ -9,8 +9,6 @@ import mss
 import numpy as np
 from loguru import logger
 
-from layout import FrameLayout
-
 try:
     import Quartz
     from AppKit import (
@@ -242,34 +240,16 @@ class GameWindowCapture:
         window_title: str,
         titlebar_height: int = 0,
         window_owner: str = "",
-        reference_width: int = 1920,
-        reference_height: int = 1080,
-        layout_fit: str = "fill",
-        layout_match: float = 1.0,
-        y_ref_height: int = 0,
+        **_unused: object,
     ) -> None:
         self.window_title = window_title
         self.titlebar_height = max(0, int(titlebar_height))
         self.window_owner = window_owner
-        self.reference_width = max(1, int(reference_width))
-        self.reference_height = max(1, int(reference_height))
-        self.layout_fit = str(layout_fit or "fill")
-        self.layout_match = min(max(float(layout_match), 0.0), 1.0)
-        self.y_ref_height = max(0, int(y_ref_height))
         self._sct = mss.mss()
         self.last_region: CaptureRegion | None = None
         self.last_capture_at = 0.0
         self._last_owner = ""
         self._logged_size = False
-        self.layout = FrameLayout.from_frame(
-            self.reference_width,
-            self.reference_height,
-            self.reference_width,
-            self.reference_height,
-            self.layout_fit,
-            match=self.layout_match,
-            y_ref_h=self.y_ref_height,
-        )
 
     def _find_window(self) -> object:
         best: object | None = None
@@ -371,39 +351,24 @@ class GameWindowCapture:
                 )
             )
             frame = cv2.cvtColor(raw, cv2.COLOR_BGRA2BGR)
+            if frame.shape[1] != region.width or frame.shape[0] != region.height:
+                frame = cv2.resize(
+                    frame,
+                    (region.width, region.height),
+                    interpolation=cv2.INTER_AREA,
+                )
             self.last_region = region
             self.last_capture_at = time()
-            self.layout = FrameLayout.build(
-                frame.shape[1],
-                frame.shape[0],
-                region.left,
-                region.top,
-                region.width,
-                region.height,
-                ref_w=self.reference_width,
-                ref_h=self.reference_height,
-                fit=self.layout_fit,
-                match=self.layout_match,
-                y_ref_h=self.y_ref_height,
-            )
             if not self._logged_size:
                 self._logged_size = True
                 logger.info(
-                    "Захват окна: логический {}x{} @ ({}, {}), сырой {}x{}, "
-                    "эталон {}x{} (Y={}), fit={}, match={:.2f}, масштаб {:.3f}x{:.3f}",
+                    "Захват окна: логический {}x{} @ ({}, {}), снимок {}x{}",
                     region.width,
                     region.height,
                     region.left,
                     region.top,
-                    raw.shape[1],
-                    raw.shape[0],
-                    self.reference_width,
-                    self.reference_height,
-                    self.layout.y_ref_h,
-                    self.layout.fit,
-                    self.layout.match,
-                    self.layout.scale_x,
-                    self.layout.scale_y,
+                    frame.shape[1],
+                    frame.shape[0],
                 )
             return frame
         except Exception:
@@ -411,24 +376,16 @@ class GameWindowCapture:
             raise
 
     def to_screen(self, x: int, y: int) -> tuple[int, int]:
-        """Переводит координаты снимка в экранные точки macOS."""
-        return self.layout.frame_to_screen(x, y)
+        region = self.last_region
+        if region is None:
+            region = self.get_region()
+        return region.left + int(x), region.top + int(y)
 
     def from_screen(self, x: int, y: int) -> tuple[int, int]:
-        """Переводит экранные точки в координаты снимка."""
-        return self.layout.screen_to_frame(x, y)
-
-    def map_ref(self, x: int, y: int) -> tuple[int, int]:
-        return self.layout.ref_to_frame(x, y)
-
-    def map_ref_rect(
-        self,
-        left: int,
-        top: int,
-        right: int,
-        bottom: int,
-    ) -> tuple[int, int, int, int]:
-        return self.layout.ref_to_frame_rect(left, top, right, bottom)
+        region = self.last_region
+        if region is None:
+            region = self.get_region()
+        return int(x) - region.left, int(y) - region.top
 
     def contains_point(self, x: int, y: int) -> bool:
         try:

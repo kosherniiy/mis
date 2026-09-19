@@ -9,8 +9,6 @@ import cv2
 import numpy as np
 from loguru import logger
 
-from layout import FrameLayout
-
 
 _TEMPLATE_CACHE: dict[Path, np.ndarray] = {}
 _CACHE_LOCK = RLock()
@@ -101,57 +99,17 @@ class Vision:
         threshold: float = 0.85,
         debug: bool = False,
         debug_dir: str | Path = "./debug",
-        reference_width: int = 1920,
-        reference_height: int = 1080,
-        layout_fit: str = "fill",
-        layout_match: float = 1.0,
-        y_ref_height: int = 0,
+        **_unused: object,
     ) -> None:
         self.templates_dir = Path(templates_dir)
         self.threshold = threshold
         self.debug = debug
         self.debug_dir = Path(debug_dir)
-        self.reference_width = max(1, int(reference_width))
-        self.reference_height = max(1, int(reference_height))
-        self.layout_fit = str(layout_fit or "fill")
-        self.layout_match = min(max(float(layout_match), 0.0), 1.0)
-        self.y_ref_height = max(0, int(y_ref_height))
-        self._layout_override: FrameLayout | None = None
         if debug:
             self.debug_dir.mkdir(parents=True, exist_ok=True)
 
-    def use_layout(self, layout: FrameLayout | None) -> None:
-        self._layout_override = layout
-
-    def _layout_for(self, image: np.ndarray) -> FrameLayout:
-        override = self._layout_override
-        if (
-            override is not None
-            and override.frame_w == image.shape[1]
-            and override.frame_h == image.shape[0]
-        ):
-            return override
-        return FrameLayout.from_frame(
-            image.shape[1],
-            image.shape[0],
-            self.reference_width,
-            self.reference_height,
-            self.layout_fit,
-            match=self.layout_match,
-            y_ref_h=self.y_ref_height,
-        )
-
     def _scale_template(self, template: np.ndarray, image: np.ndarray) -> np.ndarray:
-        layout = self._layout_for(image)
-        width, height = layout.ref_to_frame_size(template.shape[1], template.shape[0])
-        if width == template.shape[1] and height == template.shape[0]:
-            return template
-        interpolation = (
-            cv2.INTER_AREA
-            if width < template.shape[1] or height < template.shape[0]
-            else cv2.INTER_LINEAR
-        )
-        return cv2.resize(template, (width, height), interpolation=interpolation)
+        return template
 
     def template_path(self, name: str) -> Path:
         return self.templates_dir / name
