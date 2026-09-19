@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import sys
 import traceback
 from collections import Counter
 from datetime import datetime
@@ -371,12 +372,16 @@ def read_enemy_hp(
         bottom = int(area["bottom"])
         ref = config.get("reference_resolution")
         ref = ref if isinstance(ref, dict) else {}
+        fit = str(ref.get("fit", "fill"))
+        if sys.platform == "darwin":
+            macos = config.get("macos") if isinstance(config.get("macos"), dict) else {}
+            fit = str(macos.get("layout_fit") or "contain")
         layout = FrameLayout.from_frame(
             frame.shape[1],
             frame.shape[0],
             int(ref.get("width", 1920)),
             int(ref.get("height", 1080)),
-            str(ref.get("fit", "fill")),
+            fit,
         )
         left, top, right, bottom = layout.ref_to_frame_rect(left, top, right, bottom)
         if not (

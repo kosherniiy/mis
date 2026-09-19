@@ -68,5 +68,6 @@ def make_game_capture(config: dict) -> GameWindowCapture:
     macos = config.get("macos", {}) if isinstance(config.get("macos"), dict) else {}
     kwargs["titlebar_height"] = int(macos.get("titlebar_height", 0))
     kwargs["window_owner"] = str(macos.get("window_owner", ""))
+    kwargs["layout_fit"] = str(macos.get("layout_fit") or "contain")
     return GameWindowCapture(title, **kwargs)
 

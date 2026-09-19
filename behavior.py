@@ -50,6 +50,10 @@ class MiscritsBehavior:
         )
         ref = config.get("reference_resolution")
         ref = ref if isinstance(ref, dict) else {}
+        layout_fit = str(ref.get("fit", "fill"))
+        if sys.platform == "darwin":
+            macos = config.get("macos") if isinstance(config.get("macos"), dict) else {}
+            layout_fit = str(macos.get("layout_fit") or "contain")
         self.vision = Vision(
             config.get("templates_dir", "./templates"),
             float(config.get("confidence_threshold", 0.85)),
@@ -57,7 +61,7 @@ class MiscritsBehavior:
             "./debug",
             reference_width=int(ref.get("width", 1920)),
             reference_height=int(ref.get("height", 1080)),
-            layout_fit=str(ref.get("fit", "fill")),
+            layout_fit=layout_fit,
         )
         delays = config.get("action_delays", {})
         manual_pause = config.get("manual_mouse_pause", {})
@@ -101,6 +105,7 @@ class MiscritsBehavior:
         macos = config.get("macos") if isinstance(config.get("macos"), dict) else {}
         kwargs["titlebar_height"] = int(macos.get("titlebar_height", 0))
         kwargs["window_owner"] = str(macos.get("window_owner", ""))
+        kwargs["layout_fit"] = str(macos.get("layout_fit") or "contain")
         return kwargs
 
     @staticmethod
