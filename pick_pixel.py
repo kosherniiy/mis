@@ -50,8 +50,11 @@ def run_global_picker() -> int:
 
                 if 0 <= local_x < region.width and 0 <= local_y < region.height:
                     frame = capture.capture()
-                    blue, green, red = (int(value) for value in frame[local_y, local_x])
-                    result = format_pixel(local_x, local_y, blue, green, red)
+                    frame_x, frame_y = capture.from_screen(screen_x, screen_y)
+                    frame_y = min(max(frame_y, 0), frame.shape[0] - 1)
+                    frame_x = min(max(frame_x, 0), frame.shape[1] - 1)
+                    blue, green, red = (int(value) for value in frame[frame_y, frame_x])
+                    result = format_pixel(frame_x, frame_y, blue, green, red)
                     print(result, flush=True)
                     result_path.write_text(result + "\n", encoding="utf-8")
                     print(f"Сохранено: {result_path.resolve()}", flush=True)

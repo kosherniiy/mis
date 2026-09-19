@@ -5,6 +5,11 @@ macos:
   # Имя процесса, если заголовок окна пустой. Для fullscreen на отдельном столе
   # обычно совпадает с приложением, например "Miscrits" или "Google Chrome".
   window_owner: ""
+# Эталон, под который нарезаны templates и координаты в этом файле.
+# Снимок другого размера (например 1440x900 на Mac) масштабируется сюда.
+reference_resolution:
+  width: 1920
+  height: 1080
 start_phase: "search"
 templates_dir: "./templates"
 confidence_threshold: 0.85

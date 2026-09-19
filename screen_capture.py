@@ -24,8 +24,15 @@ class CaptureRegion:
 class GameWindowCapture:
     """Захватывает только клиентскую область окна игры."""
 
-    def __init__(self, window_title: str) -> None:
+    def __init__(
+        self,
+        window_title: str,
+        reference_width: int = 1920,
+        reference_height: int = 1080,
+    ) -> None:
         self.window_title = window_title
+        self.reference_width = max(1, int(reference_width))
+        self.reference_height = max(1, int(reference_height))
         self._sct = mss.mss()
         self.last_region: CaptureRegion | None = None
         self.last_capture_at = 0.0
@@ -86,18 +93,52 @@ class GameWindowCapture:
                     }
                 )
             )
+            frame = cv2.cvtColor(raw, cv2.COLOR_BGRA2BGR)
+            if (
+                frame.shape[1] != self.reference_width
+                or frame.shape[0] != self.reference_height
+            ):
+                interpolation = (
+                    cv2.INTER_AREA
+                    if (
+                        frame.shape[1] > self.reference_width
+                        or frame.shape[0] > self.reference_height
+                    )
+                    else cv2.INTER_LINEAR
+                )
+                frame = cv2.resize(
+                    frame,
+                    (self.reference_width, self.reference_height),
+                    interpolation=interpolation,
+                )
             self.last_region = region
             self.last_capture_at = time()
-            return cv2.cvtColor(raw, cv2.COLOR_BGRA2BGR)
+            return frame
         except Exception:
             logger.exception("Ошибка захвата окна игры")
             raise
 
     def to_screen(self, x: int, y: int) -> tuple[int, int]:
-        """Переводит координаты снимка в абсолютные экранные координаты."""
+        """Переводит координаты эталонного снимка в абсолютные экранные координаты."""
         if self.last_region is None:
             raise RuntimeError("До преобразования координат необходимо сделать снимок")
-        return self.last_region.left + x, self.last_region.top + y
+        scale_x = self.last_region.width / self.reference_width
+        scale_y = self.last_region.height / self.reference_height
+        return (
+            int(round(self.last_region.left + x * scale_x)),
+            int(round(self.last_region.top + y * scale_y)),
+        )
+
+    def from_screen(self, x: int, y: int) -> tuple[int, int]:
+        """Переводит экранные координаты в координаты эталонного снимка."""
+        if self.last_region is None:
+            raise RuntimeError("До преобразования координат необходимо сделать снимок")
+        scale_x = self.reference_width / self.last_region.width
+        scale_y = self.reference_height / self.last_region.height
+        return (
+            int(round((x - self.last_region.left) * scale_x)),
+            int(round((y - self.last_region.top) * scale_y)),
+        )
 
     def close(self) -> None:
         self._sct.close()

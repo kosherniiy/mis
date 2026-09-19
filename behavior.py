@@ -84,13 +84,18 @@ class MiscritsBehavior:
 
     @staticmethod
     def _capture_kwargs(config: dict[str, Any]) -> dict[str, Any]:
-        if sys.platform != "darwin":
-            return {}
-        macos = config.get("macos", {})
-        return {
-            "titlebar_height": int(macos.get("titlebar_height", 0)),
-            "window_owner": str(macos.get("window_owner", "")),
+        ref = config.get("reference_resolution")
+        ref = ref if isinstance(ref, dict) else {}
+        kwargs: dict[str, Any] = {
+            "reference_width": int(ref.get("width", 1920)),
+            "reference_height": int(ref.get("height", 1080)),
         }
+        if sys.platform != "darwin":
+            return kwargs
+        macos = config.get("macos") if isinstance(config.get("macos"), dict) else {}
+        kwargs["titlebar_height"] = int(macos.get("titlebar_height", 0))
+        kwargs["window_owner"] = str(macos.get("window_owner", ""))
+        return kwargs
 
     @staticmethod
     def _restore_coordinates(value: object) -> tuple[int, int] | None:
@@ -237,10 +242,7 @@ class MiscritsBehavior:
         self.last_coordinates = (actual_x, actual_y)
         if self.capture.last_region is None:
             return local_x, local_y
-        return (
-            actual_x - self.capture.last_region.left,
-            actual_y - self.capture.last_region.top,
-        )
+        return self.capture.from_screen(actual_x, actual_y)
 
     def _click_random_area(
         self,

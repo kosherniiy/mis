@@ -235,10 +235,19 @@ def _activate_osascript(pid: int, owner: str) -> bool:
 class GameWindowCapture:
     """Захватывает клиентскую область окна игры на macOS."""
 
-    def __init__(self, window_title: str, titlebar_height: int = 0, window_owner: str = "") -> None:
+    def __init__(
+        self,
+        window_title: str,
+        titlebar_height: int = 0,
+        window_owner: str = "",
+        reference_width: int = 1920,
+        reference_height: int = 1080,
+    ) -> None:
         self.window_title = window_title
         self.titlebar_height = max(0, int(titlebar_height))
         self.window_owner = window_owner
+        self.reference_width = max(1, int(reference_width))
+        self.reference_height = max(1, int(reference_height))
         self._sct = mss.mss()
         self.last_region: CaptureRegion | None = None
         self.last_capture_at = 0.0
@@ -345,27 +354,36 @@ class GameWindowCapture:
                 )
             )
             frame = cv2.cvtColor(raw, cv2.COLOR_BGRA2BGR)
-            if frame.shape[1] != region.width or frame.shape[0] != region.height:
+            if (
+                frame.shape[1] != self.reference_width
+                or frame.shape[0] != self.reference_height
+            ):
+                interpolation = (
+                    cv2.INTER_AREA
+                    if (
+                        frame.shape[1] > self.reference_width
+                        or frame.shape[0] > self.reference_height
+                    )
+                    else cv2.INTER_LINEAR
+                )
                 frame = cv2.resize(
                     frame,
-                    (region.width, region.height),
-                    interpolation=cv2.INTER_AREA,
+                    (self.reference_width, self.reference_height),
+                    interpolation=interpolation,
                 )
             if not self._logged_size:
                 self._logged_size = True
                 logger.info(
-                    "Захват окна: логический {}x{} @ ({}, {}), сырой снимок {}x{}",
+                    "Захват окна: логический {}x{} @ ({}, {}), сырой {}x{}, эталон {}x{}",
                     region.width,
                     region.height,
                     region.left,
                     region.top,
                     raw.shape[1],
                     raw.shape[0],
+                    self.reference_width,
+                    self.reference_height,
                 )
-                if region.width != 1920 or region.height != 1080:
-                    logger.warning(
-                        "Окно не 1920x1080 — Windows-шаблоны и пиксели, скорее всего, съедут"
-                    )
             self.last_region = region
             self.last_capture_at = time()
             return frame
@@ -374,10 +392,28 @@ class GameWindowCapture:
             raise
 
     def to_screen(self, x: int, y: int) -> tuple[int, int]:
-        """Переводит координаты снимка в экранные точки macOS."""
+        """Переводит координаты эталонного снимка в экранные точки macOS."""
         if self.last_region is None:
             raise RuntimeError("До преобразования координат необходимо сделать снимок")
-        return self.last_region.left + x, self.last_region.top + y
+        scale_x = self.last_region.width / self.reference_width
+        scale_y = self.last_region.height / self.reference_height
+        return (
+            int(round(self.last_region.left + x * scale_x)),
+            int(round(self.last_region.top + y * scale_y)),
+        )
+
+    def from_screen(self, x: int, y: int) -> tuple[int, int]:
+        """Переводит экранные точки в координаты эталонного снимка."""
+        if self.last_region is None:
+            region = self.get_region()
+        else:
+            region = self.last_region
+        scale_x = self.reference_width / region.width
+        scale_y = self.reference_height / region.height
+        return (
+            int(round((x - region.left) * scale_x)),
+            int(round((y - region.top) * scale_y)),
+        )
 
     def contains_point(self, x: int, y: int) -> bool:
         try:
